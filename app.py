@@ -339,6 +339,80 @@ STATUS_COLORS = {
     "보류": "#F59E0B",
 }
 
+# 포지션별 채용 프로세스 정의
+SLACK_CHANNEL = "#원스글로벌_채용"
+
+PROCESS_FLOW = {
+    "개발자": {
+        "서류검토자": "Furi",
+        "1차면접관": "Furi",
+        "2차면접관": "Furi · Y · Lina",
+        "1차면접_연락": "Owen",
+        "2차면접_연락": "Owen",
+        "최종연락_연봉협상": "Lina",
+    },
+    "AI연구원": {
+        "서류검토자": "Y · Ryan · Eden",
+        "1차면접관": "Y · Ryan · Eden",
+        "2차면접관": "Furi · Y · Lina",
+        "1차면접_연락": "Owen",
+        "2차면접_연락": "Owen",
+        "최종연락_연봉협상": "Lina",
+    },
+}
+
+
+def next_action_for(position: str, status: str) -> dict | None:
+    """현재 status에 따른 다음 액션 안내. None이면 종료/대기 상태."""
+    flow = PROCESS_FLOW.get(position)
+    if not flow:
+        return None
+    mapping = {
+        "미검토": {
+            "label": "1️⃣ 서류 검토",
+            "owner": flow["서류검토자"],
+            "action": f"{flow['서류검토자']}님이 이력서·포트폴리오·자기소개서를 검토합니다.",
+            "next_status": "서류통과 / 탈락",
+        },
+        "서류통과": {
+            "label": "2️⃣ 1차면접 일정 안내",
+            "owner": flow["1차면접_연락"],
+            "action": f"{flow['1차면접_연락']}님이 지원자에게 연락하여 1차면접 일정을 조율합니다. 1차면접은 {flow['1차면접관']}님이 진행합니다.",
+            "next_status": "1차면접통과 / 탈락",
+        },
+        "1차면접통과": {
+            "label": "3️⃣ 2차면접 일정 안내",
+            "owner": flow["2차면접_연락"],
+            "action": f"{flow['2차면접_연락']}님이 지원자에게 연락하여 2차면접 일정을 조율합니다. 2차면접은 {flow['2차면접관']}님이 참여하여 최종 의사결정합니다.",
+            "next_status": "2차면접통과 / 탈락",
+        },
+        "2차면접통과": {
+            "label": "4️⃣ 최종합격 · 연봉협상",
+            "owner": flow["최종연락_연봉협상"],
+            "action": f"{flow['최종연락_연봉협상']}님이 지원자에게 연락하여 연봉협상 등을 진행합니다.",
+            "next_status": "최종합격",
+        },
+        "최종합격": {
+            "label": "✅ 채용 완료",
+            "owner": "—",
+            "action": "최종합격으로 채용 프로세스가 완료되었습니다.",
+            "next_status": "—",
+        },
+        "탈락": {
+            "label": "❌ 종료",
+            "owner": "—",
+            "action": "탈락으로 채용 프로세스가 종료되었습니다.",
+            "next_status": "—",
+        },
+        "보류": {
+            "label": "⏸️ 검토 보류",
+            "owner": "—",
+            "action": "현재 보류 상태입니다. 검토 재개 시 다음 단계로 진행하세요.",
+            "next_status": "—",
+        },
+    }
+    return mapping.get(status)
+
 
 def get_shared_drive_id() -> str:
     try:
@@ -655,6 +729,22 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
                 unsafe_allow_html=True)
     st.write("")
 
+    # 다음 액션 안내 (현재 status 기준)
+    current_status = status_data.get('status', '미검토')
+    action = next_action_for(applicant['position'], current_status)
+    if action:
+        st.markdown(
+            f'<div style="background:{PRIMARY_LIGHT};border-left:4px solid {PRIMARY};'
+            f'padding:12px 18px;margin-bottom:12px;border-radius:6px;">'
+            f'<div style="color:{PRIMARY};font-weight:700;font-size:0.95rem;">'
+            f'{action["label"]} · 담당: {action["owner"]}</div>'
+            f'<div style="color:#4B5563;font-size:0.88rem;margin-top:4px;">{action["action"]}</div>'
+            f'<div style="color:#8B8A95;font-size:0.78rem;margin-top:6px;">'
+            f'다음 상태: {action["next_status"]} · Slack: {SLACK_CHANNEL}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
     # 진행 상태 + 메모 (상단 가로 배치)
     with st.container(border=True):
         st.markdown("**📌 진행 상태 / 메모**")
@@ -844,6 +934,49 @@ def _render_analysis(applicant: dict, analysis: dict,
                 )
 
 
+def page_process(position: str):
+    """포지션별 채용 프로세스 흐름 표시."""
+    st.markdown(f"## 📞 {position} 채용 프로세스")
+    flow = PROCESS_FLOW.get(position)
+    if not flow:
+        st.warning(f"'{position}' 프로세스가 정의되어 있지 않습니다.")
+        return
+    st.caption(f"모든 커뮤니케이션은 Slack **{SLACK_CHANNEL}** 채널에서 진행됩니다.")
+    st.write("")
+
+    steps = [
+        ("1️⃣", "서류 검토", flow["서류검토자"],
+         f"{flow['서류검토자']}님이 지원자의 이력서·포트폴리오·자기소개서를 검토합니다.",
+         "→ 통과 시 Owen에게 알림"),
+        ("2️⃣", "1차면접 일정 조율", flow["1차면접_연락"],
+         f"{flow['1차면접_연락']}님이 지원자에게 연락하여 1차면접 일정을 잡습니다.", ""),
+        ("3️⃣", "1차면접", flow["1차면접관"],
+         f"{flow['1차면접관']}님이 1차면접을 진행합니다.",
+         "→ 통과 시 Owen에게 알림"),
+        ("4️⃣", "2차면접 일정 조율", flow["2차면접_연락"],
+         f"{flow['2차면접_연락']}님이 지원자에게 연락하여 2차면접 일정을 잡습니다.", ""),
+        ("5️⃣", "2차면접 + 최종 의사결정", flow["2차면접관"],
+         f"{flow['2차면접관']}님이 2차면접에 참여하고 같이 의사결정해서 최종 후보자를 결정합니다.",
+         "→ 결정 시 Lina에게 알림"),
+        ("6️⃣", "최종합격 · 연봉협상", flow["최종연락_연봉협상"],
+         f"{flow['최종연락_연봉협상']}님이 지원자에게 연락하여 연봉협상 등을 진행 후 최종합격합니다.", ""),
+    ]
+    for emoji, title, owner, action, note in steps:
+        st.markdown(
+            f'<div style="background:white;border-left:4px solid {PRIMARY};'
+            f'padding:14px 18px;margin-bottom:10px;border-radius:6px;'
+            f'box-shadow:0 1px 3px rgba(0,0,0,0.04);">'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+            f'<div><b style="color:{PRIMARY};font-size:1.05rem;">{emoji} {title}</b>'
+            f'<span style="color:#6B6A73;margin-left:8px;font-size:0.85rem;">담당: <b>{owner}</b></span></div>'
+            f'</div>'
+            f'<div style="color:#4B5563;font-size:0.92rem;margin-top:6px;">{action}</div>'
+            + (f'<div style="color:#8B8A95;font-size:0.82rem;margin-top:4px;">{note}</div>' if note else '')
+            + '</div>',
+            unsafe_allow_html=True,
+        )
+
+
 def page_jd(jd_text: str, position: str):
     """채용 공고 보기."""
     with st.container(border=True):
@@ -958,7 +1091,7 @@ def main():
         st.divider()
         view_mode = st.radio(
             "보기",
-            options=["📊 지원자 목록", "📋 채용 공고", "🎯 인재상 관리"],
+            options=["📊 지원자 목록", "📞 채용 프로세스", "📋 채용 공고", "🎯 인재상 관리"],
             key='view_mode',
             label_visibility="collapsed",
         )
@@ -995,6 +1128,8 @@ def main():
     selected = st.session_state.get('selected_applicant_id')
     if view_mode == "🎯 인재상 관리":
         page_profiles(position, list(positions_map.keys()), profiles)
+    elif view_mode == "📞 채용 프로세스":
+        page_process(position)
     elif selected and view_mode == "📊 지원자 목록":
         applicant = next((a for a in applicants if a['id'] == selected), None)
         if applicant:
