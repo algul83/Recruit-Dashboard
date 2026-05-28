@@ -512,17 +512,30 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
 
     st.write("")
 
-    # 미분석 지원자 일괄 분석
+    # 미분석 / 전체 재분석
     pending = [a for a in applicants if a['id'] not in analyses]
+    cols = st.columns([3, 1, 1])
     if pending:
-        cols = st.columns([3, 1])
         with cols[0]:
             st.info(f"📌 미분석 지원자 **{len(pending)}명** 있습니다. "
                     f"AI 분석을 실행하면 매칭도와 핵심역량을 확인할 수 있습니다.")
         with cols[1]:
-            if st.button(f"🚀 미분석 {len(pending)}명 분석", use_container_width=True, type="primary"):
+            if st.button(f"🚀 미분석 {len(pending)}명 분석",
+                         use_container_width=True, type="primary",
+                         key="btn_analyze_pending"):
                 _bulk_analyze(pending, jd_text, analyses, ideal_profile)
                 st.rerun()
+    else:
+        with cols[0]:
+            st.success(f"✅ {len(applicants)}명 모두 분석 완료. "
+                       f"인재상이나 JD가 변경되었으면 전체 재분석으로 갱신할 수 있습니다.")
+    with cols[2]:
+        if st.button(f"🔄 전체 재분석 ({len(applicants)}명)",
+                     use_container_width=True,
+                     help="인재상/JD 변경 후 모든 지원자를 새로 분석합니다.",
+                     key="btn_reanalyze_all"):
+            _bulk_analyze(applicants, jd_text, analyses, ideal_profile)
+            st.rerun()
 
     # 정렬·필터
     sort_col, filter_col = st.columns([2, 3])
