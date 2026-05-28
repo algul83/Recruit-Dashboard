@@ -13,6 +13,7 @@ import cache_store
 import data_loader
 import extractors
 import jd_fetcher
+import slack_notify
 
 # ============== 색상 팔레트 (ConnectDI Keyword Dashboard와 동일) ==============
 PRIMARY = "#5B43C9"
@@ -360,6 +361,63 @@ PROCESS_FLOW = {
         "최종연락_연봉협상": "Lina",
     },
 }
+
+
+def _next_status_choices(status: str) -> list[tuple[str, str, str]]:
+    """현재 status별로 가능한 다음 status 버튼 (label, new_status, button_type)."""
+    forward = {
+        "미검토": ("✅ 서류 통과", "서류통과"),
+        "서류통과": ("✅ 1차면접 통과", "1차면접통과"),
+        "1차면접통과": ("✅ 2차면접 통과", "2차면접통과"),
+        "2차면접통과": ("✅ 최종합격", "최종합격"),
+    }
+    choices = []
+    if status in forward:
+        l, n = forward[status]
+        choices.append((l, n, "primary"))
+        choices.append(("❌ 탈락", "탈락", "secondary"))
+        choices.append(("⏸️ 보류", "보류", "secondary"))
+    return choices
+
+
+def _advance_status(applicant: dict, new_status: str,
+                    status_data: dict, all_statuses: dict, analysis: dict):
+    """status 변경 + 메모 자동 기록 + Slack 자동 알림."""
+    prev_status = status_data.get('status', '미검토')
+    now = datetime.now().isoformat(timespec='minutes')
+    auto_note = f"[{now}] {prev_status} → {new_status}"
+    prev_notes = status_data.get('notes', '').strip()
+    new_notes = f"{prev_notes}\n{auto_note}" if prev_notes else auto_note
+
+    all_statuses[applicant['id']] = {
+        'status': new_status,
+        'notes': new_notes,
+        'updated_at': datetime.now().isoformat(timespec='seconds'),
+    }
+    cache_store.save_statuses(get_shared_drive_id(), all_statuses)
+    load_cached_statuses.clear()
+
+    # Slack 알림
+    next_act = next_action_for(applicant['position'], new_status)
+    score = analysis.get('매칭도', {}).get('점수') if analysis else None
+    if next_act and next_act['owner'] != '—':
+        owner_first = next_act['owner'].split(' · ')[0]
+        action_text = next_act['action']
+        result = slack_notify.notify_status_change(
+            applicant_name=applicant['name'],
+            position=applicant['position'],
+            prev_status=prev_status,
+            new_status=new_status,
+            matching_score=score,
+            owner_name=owner_first,
+            action_text=action_text,
+        )
+        if result.get('ok'):
+            st.toast(f"✅ '{new_status}' + Slack 알림 전송 완료", icon="📣")
+        else:
+            st.toast(f"⚠️ status 변경됨. Slack 실패: {result.get('error')}", icon="⚠️")
+    else:
+        st.toast(f"✅ '{new_status}' 변경 완료", icon="✅")
 
 
 def next_action_for(position: str, status: str) -> dict | None:
@@ -729,13 +787,13 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
                 unsafe_allow_html=True)
     st.write("")
 
-    # 다음 액션 안내 (현재 status 기준)
+    # 다음 액션 안내 + 1-클릭 진행/탈락 버튼
     current_status = status_data.get('status', '미검토')
     action = next_action_for(applicant['position'], current_status)
     if action:
         st.markdown(
             f'<div style="background:{PRIMARY_LIGHT};border-left:4px solid {PRIMARY};'
-            f'padding:12px 18px;margin-bottom:12px;border-radius:6px;">'
+            f'padding:12px 18px;margin-bottom:8px;border-radius:6px;">'
             f'<div style="color:{PRIMARY};font-weight:700;font-size:0.95rem;">'
             f'{action["label"]} · 담당: {action["owner"]}</div>'
             f'<div style="color:#4B5563;font-size:0.88rem;margin-top:4px;">{action["action"]}</div>'
@@ -744,6 +802,17 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
             f'</div>',
             unsafe_allow_html=True,
         )
+
+    # 진행/탈락/보류 1-클릭 버튼 (status에 따라 노출)
+    flow_next = _next_status_choices(current_status)
+    if flow_next:
+        bc = st.columns(len(flow_next) + 1)
+        for i, (label, new_st, btn_kind) in enumerate(flow_next):
+            with bc[i]:
+                if st.button(label, use_container_width=True, type=btn_kind,
+                             key=f"step_{applicant['id']}_{new_st}"):
+                    _advance_status(applicant, new_st, status_data, all_statuses, analysis)
+                    st.rerun()
 
     # 진행 상태 + 메모 (상단 가로 배치)
     with st.container(border=True):
