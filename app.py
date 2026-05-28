@@ -245,6 +245,26 @@ st.markdown(
         visibility: hidden !important;
     }}
 
+    /* 최종 nuclear: stMain 안 모든 div 박스 시각 제거 (의도된 카드는 화이트리스트로 보호) */
+    section[data-testid="stMain"] div:not([data-testid="stVerticalBlockBorderWrapper"]):not(.kpi-box):not(.score-badge):not(.status-badge):not(.top-header):not(.top-logo):not(.top-tag) {{
+        background-color: transparent !important;
+        background-image: none !important;
+        box-shadow: none !important;
+        border: 0 !important;
+        outline: 0 !important;
+    }}
+    /* pseudo-element도 박스 시각 제거 */
+    section[data-testid="stMain"] div::before,
+    section[data-testid="stMain"] div::after {{
+        box-shadow: none !important;
+        background: transparent !important;
+        border: 0 !important;
+    }}
+    /* 단, stMain 자체의 ::before는 흰색 배경 유지 (회색 영역 방지) */
+    section[data-testid="stMain"]::before {{
+        background: white !important;
+    }}
+
     /* nuclear: 박스 시각 완전 제거 (stColumn 자식 + baseweb wrapper + stHorizontalBlock 자식) */
     section[data-testid="stMain"] [data-testid="stColumn"],
     section[data-testid="stMain"] [data-testid="stColumn"] > div,
