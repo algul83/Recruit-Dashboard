@@ -185,6 +185,21 @@ st.markdown(
         box-shadow: 0 4px 10px rgba(91, 67, 201, 0.35);
     }}
 
+    /* secondary 버튼 (← 목록으로 등) — 명확한 시각 */
+    button[kind="secondary"],
+    button[data-testid="baseButton-secondary"] {{
+        background: white !important;
+        color: {PRIMARY} !important;
+        border: 1px solid {PRIMARY} !important;
+        border-radius: 8px !important;
+        font-size: 0.9rem !important;
+        font-weight: 600 !important;
+        padding: 6px 14px !important;
+    }}
+    button[kind="secondary"]:hover {{
+        background: {PRIMARY_LIGHT} !important;
+    }}
+
     /* 사이드바 라디오 메뉴 — 평평한 텍스트 (선택 시 색깔만) */
     section[data-testid="stSidebar"] div[role="radiogroup"] {{
         flex-direction: column !important; gap: 4px !important;
