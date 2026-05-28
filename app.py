@@ -819,10 +819,12 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
         st.markdown("**📌 진행 상태 / 메모**")
         sc = st.columns([1.5, 4, 1])
         with sc[0]:
-            current = status_data.get('status', '미검토')
+            current = status_data.get('status')
+            idx = STATUS_OPTIONS.index(current) if current in STATUS_OPTIONS else None
             new_status = st.selectbox(
                 "상태", STATUS_OPTIONS,
-                index=STATUS_OPTIONS.index(current) if current in STATUS_OPTIONS else 0,
+                index=idx,
+                placeholder="상태 선택...",
                 label_visibility="collapsed",
                 key=f"status_{applicant['id']}",
             )
@@ -836,15 +838,18 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
         with sc[2]:
             if st.button("💾 저장", type="primary", use_container_width=True,
                          key=f"save_{applicant['id']}"):
-                all_statuses[applicant['id']] = {
-                    'status': new_status,
-                    'notes': notes,
-                    'updated_at': datetime.now().isoformat(timespec='seconds'),
-                }
-                cache_store.save_statuses(get_shared_drive_id(), all_statuses)
-                load_cached_statuses.clear()
-                st.success("저장 완료")
-                st.rerun()
+                if not new_status:
+                    st.warning("상태를 선택해주세요.")
+                else:
+                    all_statuses[applicant['id']] = {
+                        'status': new_status,
+                        'notes': notes,
+                        'updated_at': datetime.now().isoformat(timespec='seconds'),
+                    }
+                    cache_store.save_statuses(get_shared_drive_id(), all_statuses)
+                    load_cached_statuses.clear()
+                    st.success("저장 완료")
+                    st.rerun()
 
     # 분석 결과 (전체 너비)
     if not analysis:
