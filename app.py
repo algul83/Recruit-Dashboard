@@ -816,12 +816,12 @@ def _render_analysis(applicant: dict, analysis: dict,
     cc = st.columns(2)
     with cc[0]:
         with st.container(border=True):
-            st.markdown(f"### ✅ JD 기준 장점")
+            st.markdown(f"### ✅ 장점 (JD · 인재상)")
             for pt in analysis.get('매칭도', {}).get('장점', []):
                 st.markdown(f"- {pt}")
     with cc[1]:
         with st.container(border=True):
-            st.markdown(f"### ⚠️ JD 기준 약점")
+            st.markdown(f"### ⚠️ 약점 (JD · 인재상)")
             for pt in analysis.get('매칭도', {}).get('약점', []):
                 st.markdown(f"- {pt}")
 
