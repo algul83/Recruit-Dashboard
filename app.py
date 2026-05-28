@@ -679,11 +679,12 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
                 load_cached_analyses.clear()
             st.rerun()
     else:
-        _render_analysis(applicant, analysis, all_analyses, jd_text)
+        _render_analysis(applicant, analysis, all_analyses, jd_text, ideal_profile)
 
 
 def _render_analysis(applicant: dict, analysis: dict,
-                     all_analyses: dict, jd_text: str):
+                     all_analyses: dict, jd_text: str,
+                     ideal_profile: str = ""):
     """분석 결과 카드 표시."""
     score = analysis.get('매칭도', {}).get('점수', 0)
     with st.container(border=True):
