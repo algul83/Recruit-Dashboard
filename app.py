@@ -365,8 +365,13 @@ def load_cached_statuses():
     return cache_store.load_statuses(get_shared_drive_id())
 
 
+@st.cache_data(ttl=300)
+def load_cached_profiles():
+    return cache_store.load_profiles(get_shared_drive_id())
+
+
 # ============== 분석 실행 ==============
-def analyze_one(applicant_dict: dict, jd_text: str) -> dict:
+def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "") -> dict:
     """지원자 1명 분석 — 자료 다운로드 후 Claude API 호출."""
     documents = {}
     for f in applicant_dict['files']:
@@ -380,13 +385,16 @@ def analyze_one(applicant_dict: dict, jd_text: str) -> dict:
             except Exception as e:
                 documents[fname] = f"[다운로드 실패: {e}]"
 
-    result = analyzer.analyze_applicant(jd_text, applicant_dict['name'], documents)
+    result = analyzer.analyze_applicant(
+        jd_text, applicant_dict['name'], documents, ideal_profile=ideal_profile,
+    )
     result['_analyzed_at'] = datetime.now().isoformat(timespec='seconds')
     return result
 
 
 # ============== UI 페이지 ==============
-def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_text: str):
+def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_text: str,
+                   ideal_profile: str = ""):
     """포지션별 지원자 리스트 + 매칭도."""
     # KPI
     total = len(applicants)
@@ -421,7 +429,7 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
                     f"AI 분석을 실행하면 매칭도와 핵심역량을 확인할 수 있습니다.")
         with cols[1]:
             if st.button(f"🚀 미분석 {len(pending)}명 분석", use_container_width=True, type="primary"):
-                _bulk_analyze(pending, jd_text, analyses)
+                _bulk_analyze(pending, jd_text, analyses, ideal_profile)
                 st.rerun()
 
     # 정렬·필터
@@ -510,16 +518,15 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
                 st.rerun()
 
 
-def _bulk_analyze(pending: list[dict], jd_text: str, analyses: dict):
+def _bulk_analyze(pending: list[dict], jd_text: str, analyses: dict, ideal_profile: str = ""):
     """진행률 표시하며 일괄 분석."""
     progress = st.progress(0.0)
     status_text = st.empty()
     for i, app in enumerate(pending, 1):
         status_text.text(f"분석 중 [{i}/{len(pending)}]: {app['name']}")
         try:
-            result = analyze_one(app, jd_text)
+            result = analyze_one(app, jd_text, ideal_profile)
             analyses[app['id']] = result
-            # 매번 저장 (중간 중단 대비)
             cache_store.save_analyses(get_shared_drive_id(), analyses)
         except Exception as e:
             analyses[app['id']] = {'error': str(e),
@@ -530,7 +537,8 @@ def _bulk_analyze(pending: list[dict], jd_text: str, analyses: dict):
 
 
 def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
-                          all_analyses: dict, all_statuses: dict, jd_text: str):
+                          all_analyses: dict, all_statuses: dict, jd_text: str,
+                          ideal_profile: str = ""):
     """지원자 상세 보기."""
     # 뒤로 가기
     if st.button("← 목록으로", type="secondary"):
@@ -579,7 +587,7 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
         st.warning("아직 AI 분석이 안 됐습니다.")
         if st.button("🚀 지금 분석", type="primary"):
             with st.spinner("분석 중..."):
-                result = analyze_one(applicant, jd_text)
+                result = analyze_one(applicant, jd_text, ideal_profile)
                 all_analyses[applicant['id']] = result
                 cache_store.save_analyses(get_shared_drive_id(), all_analyses)
                 load_cached_analyses.clear()
@@ -588,7 +596,7 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
         st.error(f"분석 오류: {analysis['error']}")
         if st.button("🔄 재분석", type="primary"):
             with st.spinner("분석 중..."):
-                result = analyze_one(applicant, jd_text)
+                result = analyze_one(applicant, jd_text, ideal_profile)
                 all_analyses[applicant['id']] = result
                 cache_store.save_analyses(get_shared_drive_id(), all_analyses)
                 load_cached_analyses.clear()
@@ -717,7 +725,7 @@ def _render_analysis(applicant: dict, analysis: dict,
         with cols[0]:
             if st.button("🔄 재분석", use_container_width=True):
                 with st.spinner("분석 중..."):
-                    result = analyze_one(applicant, jd_text)
+                    result = analyze_one(applicant, jd_text, ideal_profile)
                     all_analyses[applicant['id']] = result
                     cache_store.save_analyses(get_shared_drive_id(), all_analyses)
                     load_cached_analyses.clear()
@@ -735,6 +743,84 @@ def page_jd(jd_text: str, position: str):
     with st.container(border=True):
         st.markdown(f"### 📌 {position} — 채용 공고")
         st.text(jd_text)
+
+
+def page_profiles(current_position: str, all_positions: list[str], profiles: dict[str, str]):
+    """회사 인재상 관리 — 공통 + 포지션별 자유 텍스트 편집."""
+    st.markdown("## 🎯 인재상 관리")
+    st.caption(
+        "회사가 추구하는 인재상을 자유롭게 작성하세요. 매칭도 평가 시 JD와 함께 종합 반영됩니다.\n"
+        "공통 인재상은 모든 포지션에 적용되며, 포지션별 인재상은 해당 포지션 분석에만 추가로 반영됩니다."
+    )
+    st.write("")
+
+    # 공통 인재상
+    with st.container(border=True):
+        st.markdown("### 📐 공통 인재상 (모든 포지션 공통)")
+        common = st.text_area(
+            "공통 인재상",
+            value=profiles.get('_common', ''),
+            placeholder=(
+                "예: 호기심이 많고 새 기술을 자기주도적으로 학습하는 분.\n"
+                "협업·문서화에 가치를 두고, 단순 기술 스택보다 문제 해결 임팩트를 중시합니다.\n"
+                "의약·헬스케어 도메인에 관심이 있거나 경험이 있으면 가점."
+            ),
+            height=180,
+            label_visibility="collapsed",
+            key="profile_common",
+        )
+        if st.button("💾 공통 인재상 저장", type="primary", key="save_common"):
+            profiles['_common'] = common
+            cache_store.save_profiles(get_shared_drive_id(), profiles)
+            load_cached_profiles.clear()
+            st.success("저장되었습니다. 다음 분석부터 반영됩니다.")
+            st.rerun()
+
+    st.write("")
+
+    # 포지션별 인재상
+    with st.container(border=True):
+        st.markdown("### 🎯 포지션별 인재상")
+        pos_for_edit = st.selectbox(
+            "편집할 포지션",
+            all_positions,
+            index=all_positions.index(current_position) if current_position in all_positions else 0,
+            key="profile_pos_select",
+        )
+        st.caption(f"'{pos_for_edit}' 포지션에만 추가 반영됩니다.")
+        text = st.text_area(
+            f"{pos_for_edit} 인재상",
+            value=profiles.get(pos_for_edit, ''),
+            placeholder=(
+                f"예 ({pos_for_edit} 전용):\n"
+                "- 백엔드/데이터 파이프라인 실무 경험 우대\n"
+                "- 의약 데이터 또는 헬스케어 도메인 경험 가점\n"
+                "- 빠른 학습 능력과 자기주도적 문제 해결 마인드"
+            ),
+            height=200,
+            label_visibility="collapsed",
+            key=f"profile_pos_{pos_for_edit}",
+        )
+        if st.button(f"💾 '{pos_for_edit}' 인재상 저장", type="primary", key=f"save_pos_{pos_for_edit}"):
+            profiles[pos_for_edit] = text
+            cache_store.save_profiles(get_shared_drive_id(), profiles)
+            load_cached_profiles.clear()
+            st.success(f"'{pos_for_edit}' 인재상이 저장되었습니다.")
+            st.rerun()
+
+    st.write("")
+
+    # 현재 적용되는 인재상 미리보기
+    merged = cache_store.merged_profile_for(current_position, profiles)
+    if merged:
+        with st.container(border=True):
+            st.markdown(f"### 👀 현재 '{current_position}' 분석에 적용되는 인재상")
+            st.text(merged)
+
+    st.info(
+        "ℹ️ 인재상을 변경한 후 기존 분석 결과에 반영하려면 지원자 상세 화면에서 "
+        "**🔄 재분석** 또는 미분석 일괄 분석을 다시 실행하세요."
+    )
 
 
 # ============== Main ==============
@@ -766,7 +852,7 @@ def main():
         st.divider()
         view_mode = st.radio(
             "보기",
-            options=["📊 지원자 목록", "📋 채용 공고"],
+            options=["📊 지원자 목록", "📋 채용 공고", "🎯 인재상 관리"],
             key='view_mode',
             label_visibility="collapsed",
         )
@@ -777,6 +863,7 @@ def main():
             load_applicants_for_position.clear()
             load_cached_analyses.clear()
             load_cached_statuses.clear()
+            load_cached_profiles.clear()
             st.rerun()
 
     # 데이터 로드
@@ -784,6 +871,8 @@ def main():
     applicants = load_applicants_for_position(position, folder_id)
     analyses = load_cached_analyses()
     statuses = load_cached_statuses()
+    profiles = load_cached_profiles()
+    ideal_profile = cache_store.merged_profile_for(position, profiles)
 
     # JD 가져오기
     jd_url = get_position_url(position)
@@ -798,12 +887,14 @@ def main():
 
     # 라우팅
     selected = st.session_state.get('selected_applicant_id')
-    if selected and view_mode == "📊 지원자 목록":
+    if view_mode == "🎯 인재상 관리":
+        page_profiles(position, list(positions_map.keys()), profiles)
+    elif selected and view_mode == "📊 지원자 목록":
         applicant = next((a for a in applicants if a['id'] == selected), None)
         if applicant:
             page_applicant_detail(
                 applicant, analyses.get(selected, {}), statuses.get(selected, {}),
-                analyses, statuses, jd_text,
+                analyses, statuses, jd_text, ideal_profile,
             )
         else:
             st.session_state.pop('selected_applicant_id', None)
@@ -814,7 +905,7 @@ def main():
         else:
             st.warning("JD가 없습니다.")
     else:
-        page_dashboard(applicants, analyses, statuses, jd_text)
+        page_dashboard(applicants, analyses, statuses, jd_text, ideal_profile)
 
 
 if __name__ == "__main__":

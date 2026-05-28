@@ -30,7 +30,7 @@ import extractors
 import jd_fetcher
 
 
-def analyze_one(applicant, jd_text: str) -> dict:
+def analyze_one(applicant, jd_text: str, ideal_profile: str = "") -> dict:
     documents = {}
     for f in applicant.files:
         if f.name.endswith(('.pdf', '.pptx', '.html')):
@@ -43,7 +43,9 @@ def analyze_one(applicant, jd_text: str) -> dict:
                 print(f"  [warn] {f.name}: {e}")
     if not documents:
         return {'error': '추출 가능한 문서 없음', '_analyzed_at': datetime.now().isoformat(timespec='seconds')}
-    result = analyzer.analyze_applicant(jd_text, applicant.name, documents)
+    result = analyzer.analyze_applicant(
+        jd_text, applicant.name, documents, ideal_profile=ideal_profile,
+    )
     result['_analyzed_at'] = datetime.now().isoformat(timespec='seconds')
     return result
 
@@ -67,8 +69,12 @@ def main(position_name: str = 'AI연구원'):
     applicants = data_loader.list_applicants(positions[position_name], position_name)
     print(f"  지원자 {len(applicants)}명")
 
-    print(f"[3/4] 기존 분석 결과 로드...")
+    print(f"[3/4] 기존 분석 결과 + 인재상 로드...")
     analyses = cache_store.load_analyses(shared_drive)
+    profiles = cache_store.load_profiles(shared_drive)
+    ideal_profile = cache_store.merged_profile_for(position_name, profiles)
+    if ideal_profile:
+        print(f"  인재상 적용됨 ({len(ideal_profile)}자)")
     print(f"  기존 분석 {len(analyses)}명")
 
     pending = [a for a in applicants if a.id not in analyses]
@@ -86,7 +92,7 @@ def main(position_name: str = 'AI연구원'):
 
     for i, app in enumerate(pending, 1):
         try:
-            result = analyze_one(app, jd)
+            result = analyze_one(app, jd, ideal_profile)
             analyses[app.id] = result
             if 'error' not in result:
                 success += 1
