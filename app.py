@@ -221,11 +221,67 @@ st.markdown(
 
     h1, h2, h3, h4, h5, h6 {{ color: #1E1B2E; }}
 
-    /* Streamlit이 markdown 헤더에 자동 추가하는 anchor 링크 숨김 */
+    /* Streamlit이 markdown 헤더에 자동 추가하는 anchor 링크 완전 제거 (hover 포함) */
+    h1 a, h2 a, h3 a, h4 a, h5 a, h6 a,
     h1 > a, h2 > a, h3 > a, h4 > a, h5 > a, h6 > a,
+    [data-testid="stMarkdown"] h1 a,
+    [data-testid="stMarkdown"] h2 a,
+    [data-testid="stMarkdown"] h3 a,
+    [data-testid="stMarkdown"] h4 a,
+    [data-testid="stMarkdown"] h5 a,
+    [data-testid="stMarkdown"] h6 a,
     [data-testid="stMarkdown"] a[class*="anchor"],
-    [data-testid="stHeading"] a[href^="#"] {{
+    [data-testid="stHeading"] a,
+    [data-testid="stHeading"] a[href^="#"],
+    a[class*="anchor-link"],
+    a[href^="#"][class*="header"] {{
         display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }}
+    h1:hover a, h2:hover a, h3:hover a, h4:hover a, h5:hover a, h6:hover a {{
+        display: none !important;
+        visibility: hidden !important;
+    }}
+
+    /* nuclear: 박스 시각 완전 제거 (stColumn 자식 + baseweb wrapper + stHorizontalBlock 자식) */
+    section[data-testid="stMain"] [data-testid="stColumn"],
+    section[data-testid="stMain"] [data-testid="stColumn"] > div,
+    section[data-testid="stMain"] [data-testid="stColumn"] > div > div:not([data-testid="stVerticalBlockBorderWrapper"]),
+    section[data-testid="stMain"] [data-testid="stHorizontalBlock"],
+    section[data-testid="stMain"] [data-testid="stHorizontalBlock"] > div,
+    [data-baseweb="select"],
+    [data-baseweb="select"] > div,
+    [data-baseweb="select"] > div > div,
+    [data-baseweb="input"],
+    [data-baseweb="input"] > div,
+    [data-baseweb="base-input"],
+    [data-testid="stSelectbox"],
+    [data-testid="stSelectbox"] > div,
+    [data-testid="stSelectbox"] > div > div,
+    [data-testid="stTextInput"],
+    [data-testid="stTextArea"],
+    [data-testid="stTextArea"] > div,
+    [data-testid="stToggle"],
+    [data-testid="stToggle"] > div {{
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
+        border: 0 !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        outline: 0 !important;
+    }}
+    /* 단, st.container(border=True) 명시 카드는 시각 유지 */
+    [data-testid="stVerticalBlockBorderWrapper"] {{
+        background: white !important;
+        box-shadow: 0 2px 8px rgba(91, 67, 201, 0.06) !important;
+    }}
+    /* select dropdown 옵션 패널 텍스트 input은 시각 유지 (조작 가능하게) */
+    [data-baseweb="select"] input,
+    [data-baseweb="select"] [role="listbox"] {{
+        background: white !important;
     }}
     </style>
     """,
