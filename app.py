@@ -111,14 +111,14 @@ st.markdown(
     /* 사이드바 */
     section[data-testid="stSidebar"] {{ background: white !important; border-right: 1px solid #EDECF1; }}
 
-    /* st.container(border=True) 카드 */
+    /* st.container(border=True) 카드 — 박스 시각 완전 제거 (텍스트만 흐름) */
     div[data-testid="stVerticalBlockBorderWrapper"] {{
-        background: white !important;
+        background: transparent !important;
         border: 0 !important;
-        border-radius: 10px !important;
-        padding: 18px 22px !important;
-        margin-bottom: 12px !important;
-        box-shadow: 0 2px 8px rgba(91, 67, 201, 0.06) !important;
+        border-radius: 0 !important;
+        padding: 6px 0 !important;
+        margin-bottom: 18px !important;
+        box-shadow: none !important;
     }}
 
     /* stColumn 박스 시각 완전 제거 (자식 wrapper 포함) */
@@ -293,10 +293,11 @@ st.markdown(
         box-shadow: none !important;
         outline: 0 !important;
     }}
-    /* 단, st.container(border=True) 명시 카드는 시각 유지 */
+    /* st.container(border=True)도 박스 시각 X (텍스트만) */
     [data-testid="stVerticalBlockBorderWrapper"] {{
-        background: white !important;
-        box-shadow: 0 2px 8px rgba(91, 67, 201, 0.06) !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border: 0 !important;
     }}
     /* select dropdown 옵션 패널 텍스트 input은 시각 유지 (조작 가능하게) */
     [data-baseweb="select"] input,
