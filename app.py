@@ -374,7 +374,7 @@ def _next_status_choices(status: str) -> list[tuple[str, str, str]]:
     choices = []
     if status in forward:
         l, n = forward[status]
-        choices.append((l, n, "primary"))
+        choices.append((l, n, "secondary"))
         choices.append(("❌ 탈락", "탈락", "secondary"))
         choices.append(("⏸️ 보류", "보류", "secondary"))
     return choices
