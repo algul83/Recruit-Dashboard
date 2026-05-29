@@ -595,8 +595,12 @@ def load_cached_profiles():
 
 
 # ============== 분석 실행 ==============
-def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "") -> dict:
-    """지원자 1명 분석 — 자료 다운로드 후 Claude API 호출."""
+def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "",
+                notify_high: bool = True) -> dict:
+    """지원자 1명 분석 — 자료 다운로드 후 Claude API 호출.
+
+    notify_high=True 시 매칭도 >=70점이면 Slack #채용 채널에 담당자 멘션 알림.
+    """
     documents = {}
     for f in applicant_dict['files']:
         fname = f['name']
@@ -613,6 +617,20 @@ def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "") -> 
         jd_text, applicant_dict['name'], documents, ideal_profile=ideal_profile,
     )
     result['_analyzed_at'] = datetime.now().isoformat(timespec='seconds')
+
+    # 70점 이상 자동 슬랙 알림
+    if notify_high and 'error' not in result:
+        score = result.get('매칭도', {}).get('점수', 0) or 0
+        if score >= slack_notify.HIGH_MATCH_THRESHOLD:
+            try:
+                slack_notify.notify_high_match(
+                    applicant_name=applicant_dict['name'],
+                    position=applicant_dict['position'],
+                    score=score,
+                    oneliner=result.get('매칭도', {}).get('한줄평', ''),
+                )
+            except Exception:
+                pass
     return result
 
 

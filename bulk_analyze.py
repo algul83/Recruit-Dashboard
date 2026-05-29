@@ -28,9 +28,18 @@ import cache_store
 import data_loader
 import extractors
 import jd_fetcher
+import slack_notify
+
+# Slack 설정 주입 (standalone 실행 시)
+slack_notify.configure(
+    token=secrets.get('SLACK_BOT_TOKEN', ''),
+    channel=secrets.get('SLACK_RECRUIT_CHANNEL', ''),
+    members=secrets.get('slack_members', {}),
+)
 
 
-def analyze_one(applicant, jd_text: str, ideal_profile: str = "") -> dict:
+def analyze_one(applicant, jd_text: str, ideal_profile: str = "",
+                notify_high: bool = True) -> dict:
     documents = {}
     for f in applicant.files:
         if f.name.endswith(('.pdf', '.pptx', '.html')):
@@ -47,6 +56,20 @@ def analyze_one(applicant, jd_text: str, ideal_profile: str = "") -> dict:
         jd_text, applicant.name, documents, ideal_profile=ideal_profile,
     )
     result['_analyzed_at'] = datetime.now().isoformat(timespec='seconds')
+
+    # 70점 이상 슬랙 자동 알림
+    if notify_high:
+        score = result.get('매칭도', {}).get('점수', 0) or 0
+        if score >= slack_notify.HIGH_MATCH_THRESHOLD:
+            try:
+                slack_notify.notify_high_match(
+                    applicant_name=applicant.name,
+                    position=applicant.position,
+                    score=score,
+                    oneliner=result.get('매칭도', {}).get('한줄평', ''),
+                )
+            except Exception as e:
+                print(f"  [warn] Slack 알림 실패: {e}")
     return result
 
 
