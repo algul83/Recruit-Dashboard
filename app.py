@@ -75,12 +75,15 @@ st.markdown(
         color: {PRIMARY} !important; fill: {PRIMARY} !important;
     }}
 
-    /* 상단 진보라 헤더 — 전체 너비 fixed (Streamlit Cloud toolbar 위에 표시) */
+    /* 상단 진보라 헤더 — 전체 너비 fixed + 브라우저 호환 fallback */
     .top-header {{
+        background-color: {PRIMARY}; /* fallback */
+        background: -webkit-linear-gradient(left, {PRIMARY} 0%, {PRIMARY_DARK} 100%);
         background: linear-gradient(90deg, {PRIMARY} 0%, {PRIMARY_DARK} 100%);
         padding: 0 32px;
+        display: -webkit-flex;
         display: flex; align-items: center; gap: 20px;
-        color: white;
+        color: white !important;
         position: fixed;
         top: 0; left: 0;
         width: 100vw;
@@ -88,6 +91,7 @@ st.markdown(
         z-index: 999999;
         box-shadow: 0 1px 4px rgba(91, 67, 201, 0.15);
     }}
+    .top-header * {{ color: white !important; }}
     .top-logo {{
         color: white; font-size: 1.2rem; font-weight: 800;
         display: flex; align-items: center; gap: 8px;
@@ -109,8 +113,13 @@ st.markdown(
         padding-top: 32px !important;
     }}
 
-    /* 사이드바 */
-    section[data-testid="stSidebar"] {{ background: white !important; border-right: 1px solid #EDECF1; }}
+    /* 사이드바 (브라우저 호환 fallback) */
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] > div {{
+        background-color: #FFFFFF !important;
+        background: #FFFFFF !important;
+        border-right: 1px solid #EDECF1 !important;
+    }}
 
     /* st.container(border=True) 카드 — 박스 시각 완전 제거 (텍스트만 흐름) */
     div[data-testid="stVerticalBlockBorderWrapper"] {{
@@ -220,14 +229,23 @@ st.markdown(
         box-shadow: none !important;
     }}
 
-    /* 텍스트 입력 박스 — 박스 시각 제거 (underline만) */
+    /* 텍스트 입력 박스 — underline + 최소 클릭 영역 (Safari 호환) */
     [data-testid="stTextInput"] input,
     [data-testid="stTextArea"] textarea {{
-        background: transparent !important;
+        background: white !important;
         border: 0 !important;
-        border-bottom: 1px solid #EDECF1 !important;
+        border-bottom: 2px solid #D5D3DE !important;
         border-radius: 0 !important;
         box-shadow: none !important;
+        min-height: 38px !important;
+        padding: 8px 12px !important;
+        color: #1E1B2E !important;
+        cursor: text !important;
+    }}
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stTextArea"] textarea:focus {{
+        border-bottom-color: {PRIMARY} !important;
+        outline: none !important;
     }}
     [data-baseweb="input"], [data-baseweb="select"], [data-baseweb="base-input"] {{
         background: transparent !important;
