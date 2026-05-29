@@ -425,29 +425,33 @@ def next_action_for(position: str, status: str) -> dict | None:
     flow = PROCESS_FLOW.get(position)
     if not flow:
         return None
+    # "·" → ", " 변환 + 존칭 제거
+    reviewers = flow['서류검토자'].replace(' · ', ', ')
+    first_interviewers = flow['1차면접관'].replace(' · ', ', ')
+    second_interviewers = flow['2차면접관'].replace(' · ', ', ')
     mapping = {
         "미검토": {
             "label": "1️⃣ 서류 검토",
             "owner": flow["서류검토자"],
-            "action": f"{flow['서류검토자']}님이 이력서·포트폴리오·자기소개서를 검토합니다.",
+            "action": f"이력서, 포트폴리오, 자기소개서를 검토해주세요.",
             "next_status": "서류통과 / 탈락",
         },
         "서류통과": {
             "label": "2️⃣ 1차면접 일정 안내",
             "owner": flow["1차면접_연락"],
-            "action": f"{flow['1차면접_연락']}님이 지원자에게 연락하여 1차면접 일정을 조율합니다. 1차면접은 {flow['1차면접관']}님이 진행합니다.",
+            "action": f"지원자에게 연락하여 1차면접 일정을 조율해주세요. 1차면접은 {first_interviewers}이 진행합니다.",
             "next_status": "1차면접통과 / 탈락",
         },
         "1차면접통과": {
             "label": "3️⃣ 2차면접 일정 안내",
             "owner": flow["2차면접_연락"],
-            "action": f"{flow['2차면접_연락']}님이 지원자에게 연락하여 2차면접 일정을 조율합니다. 2차면접은 {flow['2차면접관']}님이 참여하여 최종 의사결정합니다.",
+            "action": f"지원자에게 연락하여 2차면접 일정을 조율해주세요. 2차면접은 {second_interviewers}이 참여하여 최종 의사결정합니다.",
             "next_status": "2차면접통과 / 탈락",
         },
         "2차면접통과": {
             "label": "4️⃣ 최종합격 · 연봉협상",
             "owner": flow["최종연락_연봉협상"],
-            "action": f"{flow['최종연락_연봉협상']}님이 지원자에게 연락하여 연봉협상 등을 진행합니다.",
+            "action": f"지원자에게 연락하여 연봉협상 등을 진행해주세요.",
             "next_status": "최종합격",
         },
         "최종합격": {
@@ -1036,22 +1040,25 @@ def page_process(position: str):
     st.caption(f"모든 커뮤니케이션은 Slack **{SLACK_CHANNEL}** 채널에서 진행됩니다.")
     st.write("")
 
+    reviewers = flow['서류검토자'].replace(' · ', ', ')
+    first_interviewers = flow['1차면접관'].replace(' · ', ', ')
+    second_interviewers = flow['2차면접관'].replace(' · ', ', ')
     steps = [
         ("1️⃣", "서류 검토", flow["서류검토자"],
-         f"{flow['서류검토자']}님이 지원자의 이력서·포트폴리오·자기소개서를 검토합니다.",
+         f"{reviewers}이 지원자의 이력서, 포트폴리오, 자기소개서를 검토합니다.",
          "→ 통과 시 Owen에게 알림"),
         ("2️⃣", "1차면접 일정 조율", flow["1차면접_연락"],
-         f"{flow['1차면접_연락']}님이 지원자에게 연락하여 1차면접 일정을 잡습니다.", ""),
+         f"{flow['1차면접_연락']}이 지원자에게 연락하여 1차면접 일정을 잡습니다.", ""),
         ("3️⃣", "1차면접", flow["1차면접관"],
-         f"{flow['1차면접관']}님이 1차면접을 진행합니다.",
+         f"{first_interviewers}이 1차면접을 진행합니다.",
          "→ 통과 시 Owen에게 알림"),
         ("4️⃣", "2차면접 일정 조율", flow["2차면접_연락"],
-         f"{flow['2차면접_연락']}님이 지원자에게 연락하여 2차면접 일정을 잡습니다.", ""),
+         f"{flow['2차면접_연락']}이 지원자에게 연락하여 2차면접 일정을 잡습니다.", ""),
         ("5️⃣", "2차면접 + 최종 의사결정", flow["2차면접관"],
-         f"{flow['2차면접관']}님이 2차면접에 참여하고 같이 의사결정해서 최종 후보자를 결정합니다.",
+         f"{second_interviewers}이 2차면접에 참여하고 같이 의사결정해서 최종 후보자를 결정합니다.",
          "→ 결정 시 Lina에게 알림"),
         ("6️⃣", "최종합격 · 연봉협상", flow["최종연락_연봉협상"],
-         f"{flow['최종연락_연봉협상']}님이 지원자에게 연락하여 연봉협상 등을 진행 후 최종합격합니다.", ""),
+         f"{flow['최종연락_연봉협상']}이 지원자에게 연락하여 연봉협상 등을 진행 후 최종합격합니다.", ""),
     ]
     for emoji, title, owner, action, note in steps:
         st.markdown(
