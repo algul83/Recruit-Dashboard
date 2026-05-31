@@ -1071,73 +1071,47 @@ def load_hired_examples(position: str, _drive_id: str) -> list[dict]:
 
 
 def page_learn_profile(position: str, jd_text: str, profiles: dict[str, str]):
-    """합격자 자료 기반 인재상 자동 학습 (개인정보 보호 모드).
-
-    합격자 명단·구체 패턴은 화면에 노출하지 않고, 학습 후 인재상 관리에 바로 반영.
-    """
+    """인재상 자동 학습 — 백그라운드 처리, 결과는 인재상 관리에 자동 저장."""
     st.markdown(f"## 🧠 {position} 인재상 자동 학습")
-    st.caption(
-        "Drive 합격자 자료를 분석해 인재상을 자동으로 추출합니다. "
-        "🔒 개인정보 보호를 위해 합격자 명단·세부 분석은 화면에 표시하지 않으며, "
-        "학습 결과는 추상화된 인재상 텍스트로만 저장됩니다."
-    )
     st.write("")
 
     if not jd_text:
-        st.warning("이 포지션의 JD가 secrets.toml에 설정되지 않아 학습 불가합니다.")
+        st.warning("이 포지션의 JD가 설정되지 않아 학습 불가합니다.")
         return
 
     try:
         examples = load_hired_examples(position, get_shared_drive_id())
     except Exception as e:
-        st.error(f"합격자 자료 로드 실패: {e}")
+        st.error(f"학습 자료 로드 실패: {e}")
         return
 
-    with st.container(border=True):
-        if not examples:
-            st.info(
-                "아직 합격자 자료가 없습니다.\n\n"
-                f"Drive `_hired_examples/{position}/` 안에 합격자별 폴더를 만들고 "
-                "이력서·포트폴리오 PDF를 업로드해주세요."
-            )
-            return
-        st.markdown(f"### 🔒 합격자 자료 등록 상태")
-        st.markdown(f"- **{len(examples)}명** 등록 (명단·파일명 비공개)")
-        st.markdown(f"- 학습은 백그라운드에서만 수행되며 화면에는 결과 텍스트만 표시됩니다.")
+    if not examples:
+        st.info("학습할 자료가 없습니다.")
+        return
 
-    st.write("")
-
-    # 학습 실행
+    # 학습 버튼만 노출
     cols = st.columns([2, 1])
-    with cols[0]:
-        st.info(
-            f"🚀 학습 실행 시 합격자 자료 + JD를 종합 분석해 "
-            f"추상화된 인재상 텍스트를 생성하고 `{position}` 포지션 인재상에 자동 반영합니다. "
-            f"(claude-sonnet · 약 30초)"
-        )
     with cols[1]:
-        if st.button("🚀 인재상 학습 + 자동 반영", type="primary", use_container_width=True,
+        if st.button("🚀 인재상 학습 실행", type="primary", use_container_width=True,
                      key=f"learn_btn_{position}"):
-            with st.spinner("분석 중... (30초 정도 소요)"):
+            with st.spinner("분석 중... (약 30초)"):
                 result = analyzer.learn_ideal_profile(jd_text, examples)
             if 'error' in result:
                 st.error(f"학습 실패: {result['error']}")
                 return
-            # 즉시 인재상 관리에 자동 저장
             profiles[position] = result.get('인재상_요약', '')
             cache_store.save_profiles(get_shared_drive_id(), profiles)
             load_cached_profiles.clear()
             st.session_state[f'learned_at_{position}'] = datetime.now().isoformat(timespec='seconds')
             st.success(
-                f"✅ 인재상이 학습되어 `{position}` 포지션 인재상에 자동 저장되었습니다. "
-                f"내용 검토·편집은 사이드바의 **🎯 인재상 관리**에서 가능합니다."
+                f"✅ 학습 완료. `{position}` 인재상에 자동 반영되었습니다. "
+                f"내용은 사이드바 **🎯 인재상 관리**에서 확인·편집하세요."
             )
             st.rerun()
 
-    # 마지막 학습 시각만 표시 (결과 내용은 비공개)
     last = st.session_state.get(f'learned_at_{position}')
     if last:
-        st.caption(f"마지막 학습: {last} · 결과는 인재상 관리 페이지에서 확인 가능")
+        st.caption(f"마지막 학습: {last}")
 
 
 def page_process(position: str):
