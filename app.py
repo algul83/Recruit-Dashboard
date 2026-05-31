@@ -799,28 +799,6 @@ def page_home(positions_map: dict, all_applicants: dict,
                     unsafe_allow_html=True,
                 )
 
-                st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-
-                # 상태 분포
-                STATUS_COLORS = {
-                    "미검토": "#9CA3AF", "서류통과": "#3B82F6",
-                    "1차면접통과": "#6366F1", "2차면접통과": "#8B5CF6",
-                    "최종합격": "#10B981", "보류": "#F59E0B", "탈락": "#EF4444",
-                }
-                st.markdown(
-                    '<div style="font-size:0.75rem;color:#6B6A73;font-weight:600;margin-bottom:6px;">상태 분포</div>',
-                    unsafe_allow_html=True,
-                )
-                status_html = ""
-                for st_name, n in sorted(status_count.items(), key=lambda x: -x[1]):
-                    c = STATUS_COLORS.get(st_name, "#6B6A73")
-                    status_html += (
-                        f'<span style="display:inline-block;background:{c}15;color:{c};'
-                        f'padding:2px 9px;border-radius:10px;font-size:0.72rem;'
-                        f'font-weight:600;margin-right:4px;margin-bottom:4px;">{st_name} {n}</span>'
-                    )
-                st.markdown(f'<div>{status_html}</div>', unsafe_allow_html=True)
-
                 # 매칭 후보 TOP3
                 if high_pending:
                     st.markdown(
@@ -837,43 +815,6 @@ def page_home(positions_map: dict, all_applicants: dict,
                             f'</div>',
                             unsafe_allow_html=True,
                         )
-
-    # ── 최근 분석 5건 ──
-    st.write("")
-    st.markdown("### 🕐 최근 분석 활동")
-    recent = []
-    for pos, apps in all_applicants.items():
-        for a in apps:
-            analysis = all_analyses.get(a['id'])
-            if not analysis or 'error' in analysis:
-                continue
-            recent.append({
-                'ts': analysis.get('_analyzed_at', ''),
-                'position': pos,
-                'name': a['name'],
-                'score': analysis.get('매칭도', {}).get('점수', 0) or 0,
-                'oneliner': analysis.get('매칭도', {}).get('한줄평', '')[:80],
-            })
-    recent.sort(key=lambda x: x['ts'], reverse=True)
-
-    with st.container(border=True):
-        if not recent:
-            st.caption("아직 분석된 지원자가 없습니다.")
-        else:
-            for r in recent[:5]:
-                ts_short = r['ts'].replace('T', ' ')[:16] if r['ts'] else '-'
-                score_color = "#10B981" if r['score'] >= 70 else ("#F59E0B" if r['score'] >= 50 else "#EF4444")
-                st.markdown(
-                    f'<div style="display:flex;align-items:center;gap:14px;'
-                    f'padding:8px 0;border-bottom:1px solid #F3F4F6;">'
-                    f'<span style="color:#9CA3AF;font-size:0.78rem;width:115px;">{ts_short}</span>'
-                    f'<span style="color:{PRIMARY};font-size:0.78rem;font-weight:600;width:90px;">{r["position"]}</span>'
-                    f'<span style="font-weight:600;flex:1;">{r["name"]}</span>'
-                    f'<span style="background:{score_color}15;color:{score_color};'
-                    f'padding:3px 10px;border-radius:999px;font-weight:800;font-size:0.85rem;">'
-                    f'{r["score"]}점</span></div>',
-                    unsafe_allow_html=True,
-                )
 
 
 def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_text: str,
@@ -1493,7 +1434,7 @@ def main():
 
     render_top_header()
 
-    # 사이드바: 포지션 선택
+    # 사이드바
     with st.sidebar:
         try:
             positions_map = load_positions()
@@ -1505,21 +1446,37 @@ def main():
             st.warning("채용 폴더에 포지션이 없습니다.")
             return
 
-        position = st.radio(
-            "포지션",
-            options=list(positions_map.keys()),
-            key='nav_position',
-            label_visibility="collapsed",
+        # 메뉴(보기) — 홈이 첫 항목, 사이드바 맨 위
+        st.markdown(
+            f'<div style="font-size:0.75rem;color:#8B8A95;font-weight:600;'
+            f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">메뉴</div>',
+            unsafe_allow_html=True,
         )
-
-        st.divider()
         view_mode = st.radio(
-            "보기",
+            "메뉴",
             options=["🏠 홈", "📊 지원자 목록", "📞 채용 프로세스", "📋 채용 공고",
                      "🎯 인재상 관리", "🧠 인재상 학습"],
             key='view_mode',
             label_visibility="collapsed",
         )
+
+        st.divider()
+
+        # 포지션 — 홈 화면에서는 숨김
+        if view_mode != "🏠 홈":
+            st.markdown(
+                f'<div style="font-size:0.75rem;color:#8B8A95;font-weight:600;'
+                f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">포지션</div>',
+                unsafe_allow_html=True,
+            )
+            position = st.radio(
+                "포지션",
+                options=list(positions_map.keys()),
+                key='nav_position',
+                label_visibility="collapsed",
+            )
+        else:
+            position = st.session_state.get('nav_position') or list(positions_map.keys())[0]
 
         st.divider()
         if st.button("🔄 데이터 새로고침", use_container_width=True):
