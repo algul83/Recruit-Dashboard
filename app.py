@@ -721,83 +721,104 @@ def page_home(positions_map: dict, all_applicants: dict,
     st.write("")
     st.markdown("### 📋 포지션별 현황")
 
-    # ── 포지션별 카드 ──
-    POSITION_ICONS = {"개발자": "👩‍💻", "AI연구원": "🤖", "Project Leader": "🧐"}
-    REVIEWERS = {"개발자": "Furi", "AI연구원": "Y", "Project Leader": "Lina"}
-    PERSON_LINKS = {  # 채용공고 노션 URL (page_jd의 NOTION_JD_URLS와 동일)
-        "개발자": "https://www.notion.so/3253a7334743807998f3c9c0f8d589be",
-        "AI연구원": "https://www.notion.so/3713a7334743808a927ff335888811a5",
-        "Project Leader": "https://www.notion.so/b462514264984e968434391940ca4349",
+    # ── 포지션별 카드 (시각 테마: 팀별 컬러 + 아이콘) ──
+    POSITION_THEMES = {
+        "개발자": {
+            "icon": "👩‍💻", "team": "Tech팀", "reviewer": "Furi",
+            "color": "#2563EB", "color_light": "#DBEAFE", "color_bg": "#EFF6FF",
+            "notion": "https://www.notion.so/3253a7334743807998f3c9c0f8d589be",
+        },
+        "AI연구원": {
+            "icon": "🤖", "team": "Data팀", "reviewer": "Y",
+            "color": "#7C3AED", "color_light": "#EDE9FE", "color_bg": "#F5F3FF",
+            "notion": "https://www.notion.so/3713a7334743808a927ff335888811a5",
+        },
+        "Project Leader": {
+            "icon": "🧐", "team": "ServiceX팀", "reviewer": "Lina",
+            "color": "#EA580C", "color_light": "#FED7AA", "color_bg": "#FFF7ED",
+            "notion": "https://www.notion.so/b462514264984e968434391940ca4349",
+        },
+    }
+    DEFAULT_THEME = {
+        "icon": "📋", "team": "-", "reviewer": "-",
+        "color": PRIMARY, "color_light": "#EDE9FE", "color_bg": "#F5F3FF", "notion": "",
     }
 
     pos_cols = st.columns(len(positions_map))
     for col, (position, _) in zip(pos_cols, positions_map.items()):
         apps = all_applicants.get(position, [])
         threshold = slack_notify.threshold_for(position)
-        icon = POSITION_ICONS.get(position, "📋")
-        reviewer = REVIEWERS.get(position, "-")
+        t = POSITION_THEMES.get(position, DEFAULT_THEME)
 
-        # 상태 분포
-        status_count = {}
-        for a in apps:
-            s = all_statuses.get(a['id'], {}).get('status', '미검토') or '미검토'
-            status_count[s] = status_count.get(s, 0) + 1
-        # 매칭도 분포 (분석 완료된 것만)
         scores = [
             all_analyses[a['id']].get('매칭도', {}).get('점수', 0) or 0
             for a in apps
             if a['id'] in all_analyses and 'error' not in all_analyses[a['id']]
         ]
         avg_score = sum(scores) / len(scores) if scores else 0
-        high_pending = []
-        for a in apps:
-            analysis = all_analyses.get(a['id'], {})
-            score = analysis.get('매칭도', {}).get('점수', 0) or 0
-            status = all_statuses.get(a['id'], {}).get('status', '')
-            if score >= threshold and slack_notify.is_pending_review(status):
-                high_pending.append({'name': a['name'], 'score': score})
-        high_pending.sort(key=lambda x: -x['score'])
 
-        with col:
-            with st.container(border=True):
-                # 헤더
-                notion_url = PERSON_LINKS.get(position, "")
-                link_html = (
-                    f'<a href="{notion_url}" target="_blank" '
-                    f'style="text-decoration:none;background:#f5f3ff;color:{PRIMARY};'
-                    f'padding:3px 9px;border-radius:5px;font-size:0.72rem;'
-                    f'font-weight:600;margin-left:8px;">📔 JD</a>'
-                ) if notion_url else ""
-                st.markdown(
-                    f'<div style="font-size:1.1rem;font-weight:800;color:{PRIMARY};">'
-                    f'{icon} {position}{link_html}</div>'
-                    f'<div style="font-size:0.78rem;color:#8B8A95;margin-top:2px;">'
-                    f'담당: {reviewer} · 임계값 {threshold}점</div>',
-                    unsafe_allow_html=True,
-                )
-                st.divider()
+        notion_btn = (
+            f'<a href="{t["notion"]}" target="_blank" '
+            f'style="text-decoration:none;background:white;color:{t["color"]};'
+            f'padding:5px 11px;border-radius:6px;font-size:0.72rem;font-weight:700;'
+            f'border:1px solid {t["color_light"]};box-shadow:0 1px 2px rgba(0,0,0,0.04);">'
+            f'📔 JD</a>'
+        ) if t["notion"] else ""
 
-                # 수치
-                if not apps:
-                    st.caption("아직 지원자가 없습니다.")
-                    continue
+        body = (
+            f'<div style="background:white;border-radius:14px;overflow:hidden;'
+            f'border-top:5px solid {t["color"]};box-shadow:0 4px 14px rgba(0,0,0,0.06);'
+            f'height:100%;">'
+            # 헤더 영역 (그라데이션 배경 + 큰 아이콘 동그라미)
+            f'<div style="background:linear-gradient(135deg,{t["color_bg"]} 0%,white 100%);'
+            f'padding:18px 20px 16px;">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;">'
+            f'<div style="display:flex;align-items:center;gap:14px;">'
+            f'<div style="background:{t["color_light"]};width:52px;height:52px;'
+            f'border-radius:50%;display:flex;align-items:center;justify-content:center;'
+            f'font-size:1.7rem;flex-shrink:0;">{t["icon"]}</div>'
+            f'<div>'
+            f'<div style="font-size:1.15rem;font-weight:800;color:{t["color"]};'
+            f'line-height:1.1;">{position}</div>'
+            f'<div style="font-size:0.72rem;color:#6B6A73;margin-top:4px;font-weight:500;">'
+            f'{t["team"]} · 담당 <b>{t["reviewer"]}</b> · 임계값 {threshold}점</div>'
+            f'</div></div>'
+            f'<div>{notion_btn}</div>'
+            f'</div></div>'
+        )
 
-                ck = st.columns(3)
-                ck[0].markdown(
-                    f'<div style="text-align:center;"><div style="font-size:0.7rem;color:#8B8A95;">지원자</div>'
-                    f'<div style="font-size:1.4rem;font-weight:800;color:#111;">{len(apps)}</div></div>',
-                    unsafe_allow_html=True,
-                )
-                ck[1].markdown(
-                    f'<div style="text-align:center;"><div style="font-size:0.7rem;color:#8B8A95;">분석</div>'
-                    f'<div style="font-size:1.4rem;font-weight:800;color:#10B981;">{len(scores)}</div></div>',
-                    unsafe_allow_html=True,
-                )
-                ck[2].markdown(
-                    f'<div style="text-align:center;"><div style="font-size:0.7rem;color:#8B8A95;">평균 매칭</div>'
-                    f'<div style="font-size:1.4rem;font-weight:800;color:{PRIMARY};">{avg_score:.0f}점</div></div>',
-                    unsafe_allow_html=True,
-                )
+        # 본문 (수치 3개)
+        if not apps:
+            body += (
+                f'<div style="padding:24px 20px;text-align:center;color:#9CA3AF;'
+                f'font-size:0.85rem;">아직 지원자가 없습니다.</div>'
+            )
+        else:
+            body += (
+                f'<div style="padding:18px 20px 22px;display:flex;'
+                f'justify-content:space-around;align-items:center;">'
+                f'<div style="text-align:center;flex:1;">'
+                f'<div style="font-size:0.7rem;color:#8B8A95;font-weight:600;'
+                f'text-transform:uppercase;letter-spacing:0.5px;">지원자</div>'
+                f'<div style="font-size:1.6rem;font-weight:800;color:#111;'
+                f'margin-top:4px;line-height:1;">{len(apps)}</div></div>'
+                f'<div style="width:1px;height:36px;background:#F3F4F6;"></div>'
+                f'<div style="text-align:center;flex:1;">'
+                f'<div style="font-size:0.7rem;color:#8B8A95;font-weight:600;'
+                f'text-transform:uppercase;letter-spacing:0.5px;">분석</div>'
+                f'<div style="font-size:1.6rem;font-weight:800;color:#10B981;'
+                f'margin-top:4px;line-height:1;">{len(scores)}</div></div>'
+                f'<div style="width:1px;height:36px;background:#F3F4F6;"></div>'
+                f'<div style="text-align:center;flex:1;">'
+                f'<div style="font-size:0.7rem;color:#8B8A95;font-weight:600;'
+                f'text-transform:uppercase;letter-spacing:0.5px;">평균 매칭</div>'
+                f'<div style="font-size:1.6rem;font-weight:800;color:{t["color"]};'
+                f'margin-top:4px;line-height:1;">{avg_score:.0f}<span style="font-size:0.85rem;">점</span></div>'
+                f'</div></div>'
+            )
+        body += '</div>'
+
+        col.markdown(body, unsafe_allow_html=True)
 
 
 def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_text: str,
