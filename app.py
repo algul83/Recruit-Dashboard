@@ -1048,6 +1048,148 @@ def _render_analysis(applicant: dict, analysis: dict,
                 )
 
 
+@st.cache_data(ttl=600, show_spinner="합격자 자료 로드 중...")
+def load_hired_examples(position: str, _drive_id: str) -> list[dict]:
+    """합격자 폴더에서 자료 텍스트 추출."""
+    raw = cache_store.list_hired_examples(_drive_id, position)
+    result = []
+    for h in raw:
+        docs = {}
+        for f in h.get('files', []):
+            fname = f['name']
+            if fname.endswith(('.pdf', '.pptx', '.html')):
+                try:
+                    data = data_loader.download_file(f['id'])
+                    text = extractors.extract_any(fname, data)
+                    if text and not text.startswith('['):
+                        docs[fname] = text
+                except Exception:
+                    pass
+        if docs:
+            result.append({'id': h['id'], 'name': h['name'], 'documents': docs})
+    return result
+
+
+def page_learn_profile(position: str, jd_text: str, profiles: dict[str, str]):
+    """합격자 자료 기반 인재상 자동 학습."""
+    st.markdown(f"## 🧠 {position} 인재상 자동 학습")
+    st.caption(
+        "Drive `_hired_examples/{position}/` 폴더에 업로드한 합격자 자료를 분석해 "
+        "회사가 우대하는 인재상을 자동으로 추출합니다. 결과는 검토 후 인재상 관리에 적용할 수 있습니다."
+    )
+    st.write("")
+
+    if not jd_text:
+        st.warning("이 포지션의 JD가 secrets.toml에 설정되지 않아 학습 불가합니다.")
+        return
+
+    try:
+        examples = load_hired_examples(position, get_shared_drive_id())
+    except Exception as e:
+        st.error(f"합격자 자료 로드 실패: {e}")
+        return
+
+    with st.container(border=True):
+        st.markdown(f"### 📂 등록된 합격자 ({len(examples)}명)")
+        if not examples:
+            st.info(
+                "아직 합격자 자료가 없습니다.\n\n"
+                f"Drive `_hired_examples/{position}/` 안에 합격자별 폴더를 만들고 "
+                "이력서·포트폴리오·자기소개서 PDF를 업로드해주세요."
+            )
+            return
+        for ex in examples:
+            files_str = ", ".join(d for d in ex['documents'].keys())
+            st.markdown(f"- **{ex['name']}** — {len(ex['documents'])}개 파일 ({files_str[:120]})")
+
+    st.write("")
+
+    # 학습 실행
+    learned = st.session_state.get(f'learned_{position}')
+    cols = st.columns([2, 1])
+    with cols[0]:
+        st.info(
+            f"🚀 학습 실행 시 합격자 {len(examples)}명의 자료 + JD를 종합 분석해 "
+            f"인재상 텍스트를 자동 생성합니다. (claude-sonnet 모델 · 약 30초 소요)"
+        )
+    with cols[1]:
+        if st.button("🚀 인재상 학습 실행", type="primary", use_container_width=True,
+                     key=f"learn_btn_{position}"):
+            with st.spinner("분석 중... (30초 정도 소요)"):
+                result = analyzer.learn_ideal_profile(jd_text, examples)
+            st.session_state[f'learned_{position}'] = result
+            st.rerun()
+
+    if not learned:
+        return
+
+    if 'error' in learned:
+        st.error(f"학습 실패: {learned['error']}")
+        return
+
+    # 결과 표시
+    st.markdown("---")
+    st.markdown("### 📊 학습 결과")
+
+    with st.container(border=True):
+        st.markdown("**🎯 공통 패턴**")
+        for p in learned.get('공통_패턴', []):
+            st.markdown(f"- {p}")
+
+    cc = st.columns(2)
+    with cc[0]:
+        with st.container(border=True):
+            st.markdown("**⭐ 선호 역량**")
+            for p in learned.get('선호_역량', []):
+                st.markdown(f"- {p}")
+        with st.container(border=True):
+            st.markdown("**🏥 선호 도메인**")
+            for p in learned.get('선호_도메인', []):
+                st.markdown(f"- {p}")
+    with cc[1]:
+        with st.container(border=True):
+            st.markdown("**🤝 선호 태도**")
+            for p in learned.get('선호_태도', []):
+                st.markdown(f"- {p}")
+        with st.container(border=True):
+            st.markdown("**💎 차별 포인트**")
+            for p in learned.get('차별_포인트', []):
+                st.markdown(f"- {p}")
+
+    with st.container(border=True):
+        st.markdown("### 📝 인재상 텍스트 (자동 생성)")
+        summary = learned.get('인재상_요약', '')
+        edited = st.text_area(
+            "인재상", value=summary, height=300,
+            label_visibility="collapsed",
+            key=f"learned_summary_{position}",
+        )
+        bc = st.columns(3)
+        with bc[0]:
+            if st.button(f"💾 '{position}' 인재상에 저장", type="primary",
+                         use_container_width=True, key=f"save_learned_{position}"):
+                profiles[position] = edited
+                cache_store.save_profiles(get_shared_drive_id(), profiles)
+                load_cached_profiles.clear()
+                st.success(f"'{position}' 포지션 인재상에 저장되었습니다.")
+                st.session_state.pop(f'learned_{position}', None)
+                st.rerun()
+        with bc[1]:
+            if st.button("📐 공통 인재상에 저장", use_container_width=True,
+                         key=f"save_learned_common_{position}"):
+                profiles['_common'] = edited
+                cache_store.save_profiles(get_shared_drive_id(), profiles)
+                load_cached_profiles.clear()
+                st.success("공통 인재상에 저장되었습니다.")
+                st.session_state.pop(f'learned_{position}', None)
+                st.rerun()
+        with bc[2]:
+            if st.button("🗑️ 결과 비우기", use_container_width=True,
+                         key=f"clear_learned_{position}"):
+                st.session_state.pop(f'learned_{position}', None)
+                st.rerun()
+
+
 def page_process(position: str):
     """포지션별 채용 프로세스 흐름 표시."""
     st.markdown(f"## 📞 {position} 채용 프로세스")
@@ -1208,7 +1350,8 @@ def main():
         st.divider()
         view_mode = st.radio(
             "보기",
-            options=["📊 지원자 목록", "📞 채용 프로세스", "📋 채용 공고", "🎯 인재상 관리"],
+            options=["📊 지원자 목록", "📞 채용 프로세스", "📋 채용 공고",
+                     "🎯 인재상 관리", "🧠 인재상 학습"],
             key='view_mode',
             label_visibility="collapsed",
         )
@@ -1245,6 +1388,8 @@ def main():
     selected = st.session_state.get('selected_applicant_id')
     if view_mode == "🎯 인재상 관리":
         page_profiles(position, list(positions_map.keys()), profiles)
+    elif view_mode == "🧠 인재상 학습":
+        page_learn_profile(position, jd_text, profiles)
     elif view_mode == "📞 채용 프로세스":
         page_process(position)
     elif selected and view_mode == "📊 지원자 목록":

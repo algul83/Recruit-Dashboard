@@ -11,6 +11,7 @@ DATA_FOLDER_NAME = "_dashboard_data"
 ANALYSES_FILENAME = "analyses.json"
 STATUSES_FILENAME = "statuses.json"
 PROFILES_FILENAME = "ideal_profiles.json"  # 인재상 (공통 + 포지션별)
+HIRED_FOLDER_NAME = "_hired_examples"  # 합격자 자료 (학습용)
 
 
 def _ensure_data_folder(shared_drive_id: str) -> str:
@@ -104,3 +105,51 @@ def merged_profile_for(position: str, profiles: dict[str, str]) -> str:
     if specific:
         parts.append(f"[{position} 포지션 인재상]\n{specific}")
     return "\n\n".join(parts)
+
+
+def list_hired_examples(shared_drive_id: str, position: str) -> list[dict]:
+    """_hired_examples/{position}/ 안의 합격자 폴더 목록 + 각 폴더의 파일 list 반환.
+
+    Returns: [{id, name, files: [{id, name, mime_type}]}]
+    """
+    drive = data_loader._drive_client()
+    # _hired_examples 폴더 찾기
+    r = drive.files().list(
+        q=f"'{shared_drive_id}' in parents and name='{HIRED_FOLDER_NAME}' "
+          f"and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        fields="files(id,name)",
+        corpora='drive', driveId=shared_drive_id,
+        includeItemsFromAllDrives=True, supportsAllDrives=True,
+    ).execute()
+    if not r.get('files'):
+        return []
+    hired_root = r['files'][0]['id']
+    # 포지션 폴더 찾기
+    r = drive.files().list(
+        q=f"'{hired_root}' in parents and name='{position}' "
+          f"and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        fields="files(id,name)",
+        includeItemsFromAllDrives=True, supportsAllDrives=True,
+    ).execute()
+    if not r.get('files'):
+        return []
+    pos_folder = r['files'][0]['id']
+    # 합격자 폴더 목록
+    r = drive.files().list(
+        q=f"'{pos_folder}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        fields="files(id,name)",
+        includeItemsFromAllDrives=True, supportsAllDrives=True,
+        pageSize=50,
+    ).execute()
+    hired = []
+    for f in r.get('files', []):
+        files_r = drive.files().list(
+            q=f"'{f['id']}' in parents and trashed=false",
+            fields="files(id,name,mimeType,size)",
+            includeItemsFromAllDrives=True, supportsAllDrives=True,
+        ).execute()
+        hired.append({
+            'id': f['id'], 'name': f['name'],
+            'files': files_r.get('files', []),
+        })
+    return hired
