@@ -89,6 +89,11 @@ def threshold_for(position: str) -> int:
     return HIGH_MATCH_THRESHOLDS.get(position, HIGH_MATCH_THRESHOLD)
 
 
+def is_pending_review(status: str) -> bool:
+    """미검토(아직 서류 검토 안 한) 상태인지 — 알림 발송 대상 여부."""
+    return not status or status == "미검토"
+
+
 def notify_high_match(applicant_name: str, position: str, score: int,
                        oneliner: str = "") -> dict:
     """매칭도 70점 이상 지원자 발생 시 담당자 멘션 알림."""

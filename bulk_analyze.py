@@ -39,7 +39,7 @@ slack_notify.configure(
 
 
 def analyze_one(applicant, jd_text: str, ideal_profile: str = "",
-                notify_high: bool = True) -> dict:
+                notify_high: bool = True, current_status: str = "") -> dict:
     documents = {}
     for f in applicant.files:
         if f.name.endswith(('.pdf', '.pptx', '.html')):
@@ -57,8 +57,8 @@ def analyze_one(applicant, jd_text: str, ideal_profile: str = "",
     )
     result['_analyzed_at'] = datetime.now().isoformat(timespec='seconds')
 
-    # 포지션별 임계값 이상 슬랙 자동 알림
-    if notify_high:
+    # 포지션별 임계값 이상 + 미검토 상태일 때만 슬랙 알림
+    if notify_high and slack_notify.is_pending_review(current_status):
         score = result.get('매칭도', {}).get('점수', 0) or 0
         if score >= slack_notify.threshold_for(applicant.position):
             try:
@@ -96,9 +96,10 @@ def main(position_name: str = 'AI연구원'):
     applicants = data_loader.list_applicants(positions[position_name], position_name)
     print(f"  지원자 {len(applicants)}명")
 
-    print(f"[3/4] 기존 분석 결과 + 인재상 로드...")
+    print(f"[3/4] 기존 분석 결과 + 인재상 + 상태 로드...")
     analyses = cache_store.load_analyses(shared_drive)
     profiles = cache_store.load_profiles(shared_drive)
+    statuses = cache_store.load_statuses(shared_drive)
     ideal_profile = cache_store.merged_profile_for(position_name, profiles)
     if ideal_profile:
         print(f"  인재상 적용됨 ({len(ideal_profile)}자)")
@@ -119,7 +120,8 @@ def main(position_name: str = 'AI연구원'):
 
     for i, app in enumerate(pending, 1):
         try:
-            result = analyze_one(app, jd, ideal_profile)
+            current = statuses.get(app.id, {}).get('status', '')
+            result = analyze_one(app, jd, ideal_profile, current_status=current)
             analyses[app.id] = result
             if 'error' not in result:
                 success += 1

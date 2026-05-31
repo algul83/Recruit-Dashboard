@@ -632,10 +632,11 @@ def load_cached_profiles():
 
 # ============== 분석 실행 ==============
 def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "",
-                notify_high: bool = True) -> dict:
+                notify_high: bool = True, current_status: str = "") -> dict:
     """지원자 1명 분석 — 자료 다운로드 후 Claude API 호출.
 
-    notify_high=True 시 매칭도 >=70점이면 Slack #채용 채널에 담당자 멘션 알림.
+    notify_high=True 시 매칭도 >=임계값이면서 미검토 상태일 때만 Slack 알림.
+    이미 서류통과/탈락/보류 등으로 검토된 지원자는 알림 skip.
     """
     documents = {}
     for f in applicant_dict['files']:
@@ -654,8 +655,8 @@ def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "",
     )
     result['_analyzed_at'] = datetime.now().isoformat(timespec='seconds')
 
-    # 포지션별 임계값 이상 자동 슬랙 알림
-    if notify_high and 'error' not in result:
+    # 포지션별 임계값 이상 + 미검토 상태일 때만 자동 슬랙 알림
+    if notify_high and 'error' not in result and slack_notify.is_pending_review(current_status):
         score = result.get('매칭도', {}).get('점수', 0) or 0
         if score >= slack_notify.threshold_for(applicant_dict['position']):
             try:
@@ -810,13 +811,15 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
 
 
 def _bulk_analyze(pending: list[dict], jd_text: str, analyses: dict, ideal_profile: str = ""):
-    """진행률 표시하며 일괄 분석."""
+    """진행률 표시하며 일괄 분석. 미검토 상태일 때만 슬랙 알림."""
+    statuses = load_cached_statuses()
     progress = st.progress(0.0)
     status_text = st.empty()
     for i, app in enumerate(pending, 1):
         status_text.text(f"분석 중 [{i}/{len(pending)}]: {app['name']}")
         try:
-            result = analyze_one(app, jd_text, ideal_profile)
+            current = statuses.get(app['id'], {}).get('status', '')
+            result = analyze_one(app, jd_text, ideal_profile, current_status=current)
             analyses[app['id']] = result
             cache_store.save_analyses(get_shared_drive_id(), analyses)
         except Exception as e:
@@ -906,11 +909,12 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
                     st.rerun()
 
     # 분석 결과 (전체 너비)
+    current_st = all_statuses.get(applicant['id'], {}).get('status', '')
     if not analysis:
         st.warning("아직 AI 분석이 안 됐습니다.")
         if st.button("🚀 지금 분석", type="primary"):
             with st.spinner("분석 중..."):
-                result = analyze_one(applicant, jd_text, ideal_profile)
+                result = analyze_one(applicant, jd_text, ideal_profile, current_status=current_st)
                 all_analyses[applicant['id']] = result
                 cache_store.save_analyses(get_shared_drive_id(), all_analyses)
                 load_cached_analyses.clear()
@@ -919,18 +923,18 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
         st.error(f"분석 오류: {analysis['error']}")
         if st.button("🔄 재분석", type="primary"):
             with st.spinner("분석 중..."):
-                result = analyze_one(applicant, jd_text, ideal_profile)
+                result = analyze_one(applicant, jd_text, ideal_profile, current_status=current_st)
                 all_analyses[applicant['id']] = result
                 cache_store.save_analyses(get_shared_drive_id(), all_analyses)
                 load_cached_analyses.clear()
             st.rerun()
     else:
-        _render_analysis(applicant, analysis, all_analyses, jd_text, ideal_profile)
+        _render_analysis(applicant, analysis, all_analyses, jd_text, ideal_profile, current_status=current_st)
 
 
 def _render_analysis(applicant: dict, analysis: dict,
                      all_analyses: dict, jd_text: str,
-                     ideal_profile: str = ""):
+                     ideal_profile: str = "", current_status: str = ""):
     """분석 결과 카드 표시."""
     score = analysis.get('매칭도', {}).get('점수', 0)
     with st.container(border=True):
@@ -1049,7 +1053,7 @@ def _render_analysis(applicant: dict, analysis: dict,
         with cols[0]:
             if st.button("🔄 재분석", use_container_width=True):
                 with st.spinner("분석 중..."):
-                    result = analyze_one(applicant, jd_text, ideal_profile)
+                    result = analyze_one(applicant, jd_text, ideal_profile, current_status=current_status)
                     all_analyses[applicant['id']] = result
                     cache_store.save_analyses(get_shared_drive_id(), all_analyses)
                     load_cached_analyses.clear()
