@@ -576,7 +576,10 @@ def render_top_header():
         f'<div class="top-logo">🔍 원스글로벌</div>'
         f'<div class="top-tag">채용 인사이트</div>'
         f'<div style="flex:1;"></div>'
-        f'<div style="color:rgba(255,255,255,0.85);font-size:0.85rem;">AI 이력서 분석</div>'
+        f'<a href="https://connectdi-dashboard.streamlit.app" target="_blank" '
+        f'style="color:white;text-decoration:none;background:rgba(255,255,255,0.18);'
+        f'padding:7px 14px;border-radius:6px;font-size:0.85rem;font-weight:600;">'
+        f'🔍 검색 인사이트 ↗</a>'
         f'</div>',
         unsafe_allow_html=True,
     )
