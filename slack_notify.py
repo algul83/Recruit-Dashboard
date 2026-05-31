@@ -69,7 +69,12 @@ def post_message(text: str, blocks: list | None = None) -> dict:
     return r.json()
 
 
-HIGH_MATCH_THRESHOLD = 70
+HIGH_MATCH_THRESHOLD = 70  # 기본 임계값
+
+# 포지션별 임계값 override (기본 70점)
+HIGH_MATCH_THRESHOLDS = {
+    "AI연구원": 75,  # 인재상 적용 후 점수가 전반적으로 높아 상향
+}
 
 # 포지션별로 멘션 받을 사람 (서류 검토 단계 담당자)
 HIGH_MATCH_REVIEWERS = {
@@ -77,6 +82,11 @@ HIGH_MATCH_REVIEWERS = {
     "AI연구원": ["Y"],
     "Project Leader": ["Lina"],
 }
+
+
+def threshold_for(position: str) -> int:
+    """포지션별 알림 임계값. 미설정 시 기본값."""
+    return HIGH_MATCH_THRESHOLDS.get(position, HIGH_MATCH_THRESHOLD)
 
 
 def notify_high_match(applicant_name: str, position: str, score: int,

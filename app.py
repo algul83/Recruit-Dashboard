@@ -654,10 +654,10 @@ def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "",
     )
     result['_analyzed_at'] = datetime.now().isoformat(timespec='seconds')
 
-    # 70점 이상 자동 슬랙 알림
+    # 포지션별 임계값 이상 자동 슬랙 알림
     if notify_high and 'error' not in result:
         score = result.get('매칭도', {}).get('점수', 0) or 0
-        if score >= slack_notify.HIGH_MATCH_THRESHOLD:
+        if score >= slack_notify.threshold_for(applicant_dict['position']):
             try:
                 slack_notify.notify_high_match(
                     applicant_name=applicant_dict['name'],
@@ -1174,11 +1174,30 @@ def page_process(position: str):
         )
 
 
+NOTION_JD_URLS = {
+    "개발자": "https://www.notion.so/3253a7334743807998f3c9c0f8d589be",
+    "AI연구원": "https://www.notion.so/3713a7334743808a927ff335888811a5",
+    "Project Leader": "https://www.notion.so/b462514264984e968434391940ca4349",
+}
+
+
 def page_jd(jd_text: str, position: str):
-    """채용 공고 보기."""
+    """채용 공고 보기 — Notion JD를 마크다운으로 표시."""
     with st.container(border=True):
-        st.markdown(f"### 📌 {position} — 채용 공고")
-        st.text(jd_text)
+        cols = st.columns([3, 1])
+        with cols[0]:
+            st.markdown(f"### 📌 {position} — 채용 공고")
+        with cols[1]:
+            notion_url = NOTION_JD_URLS.get(position, "")
+            if notion_url:
+                st.markdown(
+                    f'<div style="text-align:right;padding-top:6px;">'
+                    f'<a href="{notion_url}" target="_blank" style="text-decoration:none;'
+                    f'background:#f5f3ff;color:#6d28d9;padding:6px 12px;border-radius:6px;'
+                    f'font-size:0.9rem;font-weight:600;">📔 Notion에서 보기</a></div>',
+                    unsafe_allow_html=True,
+                )
+        st.markdown(jd_text if jd_text.strip() else "_채용공고 내용이 등록되지 않았습니다._")
 
 
 def page_profiles(current_position: str, all_positions: list[str], profiles: dict[str, str]):

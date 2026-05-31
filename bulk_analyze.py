@@ -57,10 +57,10 @@ def analyze_one(applicant, jd_text: str, ideal_profile: str = "",
     )
     result['_analyzed_at'] = datetime.now().isoformat(timespec='seconds')
 
-    # 70점 이상 슬랙 자동 알림
+    # 포지션별 임계값 이상 슬랙 자동 알림
     if notify_high:
         score = result.get('매칭도', {}).get('점수', 0) or 0
-        if score >= slack_notify.HIGH_MATCH_THRESHOLD:
+        if score >= slack_notify.threshold_for(applicant.position):
             try:
                 slack_notify.notify_high_match(
                     applicant_name=applicant.name,
