@@ -378,6 +378,14 @@ PROCESS_FLOW = {
         "2차면접_연락": "Owen",
         "최종연락_연봉협상": "Lina",
     },
+    "Project Leader": {
+        "서류검토자": "Lina",
+        "1차면접관": "Lina",
+        "2차면접관": "Furi · Y · Lina",
+        "1차면접_연락": "Owen",
+        "2차면접_연락": "Owen",
+        "최종연락_연봉협상": "Lina",
+    },
 }
 
 
@@ -597,8 +605,14 @@ def load_applicants_for_position(position_name: str, _folder_id: str):
 
 
 @st.cache_data(ttl=3600, show_spinner="채용 공고 가져오는 중...")
-def load_jd(url: str) -> str:
-    return jd_fetcher.fetch_saramin_jd(url)
+def load_jd(url: str, position: str = "") -> str:
+    text_override = ""
+    if position:
+        try:
+            text_override = st.secrets.get("position_jd_text", {}).get(position, "")
+        except Exception:
+            pass
+    return jd_fetcher.fetch_jd(position, url, text_override)
 
 
 @st.cache_data(ttl=300)
@@ -1297,16 +1311,19 @@ def main():
     profiles = load_cached_profiles()
     ideal_profile = cache_store.merged_profile_for(position, profiles)
 
-    # JD 가져오기
+    # JD 가져오기 (secrets[position_jd_text] override 우선, 다음 사람인 URL fetch)
     jd_url = get_position_url(position)
     jd_text = ""
-    if jd_url:
-        try:
-            jd_text = load_jd(jd_url)
-        except Exception as e:
-            st.warning(f"JD 가져오기 실패: {e}")
-    else:
-        st.info(f"⚠️ '{position}' 의 사람인 공고 URL이 secrets.toml에 설정되지 않았습니다.")
+    try:
+        jd_text = load_jd(jd_url, position)
+    except Exception as e:
+        st.warning(f"JD 가져오기 실패: {e}")
+    if not jd_text:
+        st.info(
+            f"⚠️ '{position}' JD를 가져올 수 없습니다. "
+            f"secrets.toml `[position_jd_text]` 섹션에 JD 텍스트를 등록하거나 "
+            f"사람인 URL을 `[positions]`에 추가하세요."
+        )
 
     # 라우팅
     selected = st.session_state.get('selected_applicant_id')

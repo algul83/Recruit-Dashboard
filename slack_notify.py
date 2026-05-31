@@ -75,6 +75,7 @@ HIGH_MATCH_THRESHOLD = 70
 HIGH_MATCH_REVIEWERS = {
     "개발자": ["Furi"],
     "AI연구원": ["Y"],
+    "Project Leader": ["Lina"],
 }
 
 

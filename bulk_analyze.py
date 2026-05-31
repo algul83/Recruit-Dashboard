@@ -75,13 +75,17 @@ def analyze_one(applicant, jd_text: str, ideal_profile: str = "",
 
 def main(position_name: str = 'AI연구원'):
     shared_drive = secrets.get('DRIVE_RECRUIT_ID', '0ADZEJI4H5G9QUk9PVA')
-    pos_url = secrets.get('positions', {}).get(position_name)
-    if not pos_url:
-        print(f"[error] {position_name} JD URL이 secrets에 없음")
+    pos_url = secrets.get('positions', {}).get(position_name, '')
+    text_override = secrets.get('position_jd_text', {}).get(position_name, '')
+    if not pos_url and not text_override:
+        print(f"[error] {position_name} JD URL/text가 secrets에 없음")
         return
 
     print(f"[1/4] JD 가져오기...")
-    jd = jd_fetcher.fetch_saramin_jd(pos_url)
+    jd = jd_fetcher.fetch_jd(position_name, pos_url, text_override)
+    if not jd:
+        print(f"[error] JD가 비어있음 (사람인 URL이거나 secrets[position_jd_text]에 텍스트 필요)")
+        return
     print(f"  JD: {len(jd)}자")
 
     print(f"[2/4] 지원자 로드...")
