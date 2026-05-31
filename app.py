@@ -675,6 +675,207 @@ def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "",
 
 
 # ============== UI 페이지 ==============
+def page_home(positions_map: dict, all_applicants: dict,
+              all_analyses: dict, all_statuses: dict):
+    """전체 채용 현황 홈 — 포지션·지원자·매칭·상태 종합 개요."""
+    import slack_notify
+
+    # ── 전체 KPI ──
+    total_apps = sum(len(v) for v in all_applicants.values())
+    total_analyzed = sum(
+        1 for apps in all_applicants.values() for a in apps
+        if a['id'] in all_analyses and 'error' not in all_analyses[a['id']]
+    )
+    # 매칭 후보 (미검토 + 포지션별 임계값 이상)
+    match_candidates = 0
+    for pos, apps in all_applicants.items():
+        th = slack_notify.threshold_for(pos)
+        for a in apps:
+            analysis = all_analyses.get(a['id'], {})
+            score = analysis.get('매칭도', {}).get('점수', 0) or 0
+            status = all_statuses.get(a['id'], {}).get('status', '')
+            if score >= th and slack_notify.is_pending_review(status):
+                match_candidates += 1
+
+    st.markdown(
+        f'<div style="margin-bottom:8px;">'
+        f'<span style="font-size:1.5rem;font-weight:800;color:{PRIMARY};">🏠 채용 현황 개요</span>'
+        f'<span style="margin-left:12px;color:#8B8A95;font-size:0.9rem;">전체 포지션 한눈에</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    k = st.columns(4)
+    for col, (label, value, color) in zip(k, [
+        ("채용 중인 포지션", f"{len(positions_map)}개", PRIMARY),
+        ("전체 지원자", f"{total_apps:,}명", PRIMARY),
+        ("AI 분석 완료", f"{total_analyzed:,}명", "#10B981"),
+        ("🎯 매칭 후보 (미검토)", f"{match_candidates:,}명", "#EF4444" if match_candidates else PRIMARY),
+    ]):
+        col.markdown(
+            f'<div class="kpi-box"><div class="kpi-label">{label}</div>'
+            f'<div class="kpi-value" style="color:{color};">{value}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.write("")
+    st.markdown("### 📋 포지션별 현황")
+
+    # ── 포지션별 카드 ──
+    POSITION_ICONS = {"개발자": "👩‍💻", "AI연구원": "🤖", "Project Leader": "🧐"}
+    REVIEWERS = {"개발자": "Furi", "AI연구원": "Y", "Project Leader": "Lina"}
+    PERSON_LINKS = {  # 채용공고 노션 URL (page_jd의 NOTION_JD_URLS와 동일)
+        "개발자": "https://www.notion.so/3253a7334743807998f3c9c0f8d589be",
+        "AI연구원": "https://www.notion.so/3713a7334743808a927ff335888811a5",
+        "Project Leader": "https://www.notion.so/b462514264984e968434391940ca4349",
+    }
+
+    pos_cols = st.columns(len(positions_map))
+    for col, (position, _) in zip(pos_cols, positions_map.items()):
+        apps = all_applicants.get(position, [])
+        threshold = slack_notify.threshold_for(position)
+        icon = POSITION_ICONS.get(position, "📋")
+        reviewer = REVIEWERS.get(position, "-")
+
+        # 상태 분포
+        status_count = {}
+        for a in apps:
+            s = all_statuses.get(a['id'], {}).get('status', '미검토') or '미검토'
+            status_count[s] = status_count.get(s, 0) + 1
+        # 매칭도 분포 (분석 완료된 것만)
+        scores = [
+            all_analyses[a['id']].get('매칭도', {}).get('점수', 0) or 0
+            for a in apps
+            if a['id'] in all_analyses and 'error' not in all_analyses[a['id']]
+        ]
+        avg_score = sum(scores) / len(scores) if scores else 0
+        high_pending = []
+        for a in apps:
+            analysis = all_analyses.get(a['id'], {})
+            score = analysis.get('매칭도', {}).get('점수', 0) or 0
+            status = all_statuses.get(a['id'], {}).get('status', '')
+            if score >= threshold and slack_notify.is_pending_review(status):
+                high_pending.append({'name': a['name'], 'score': score})
+        high_pending.sort(key=lambda x: -x['score'])
+
+        with col:
+            with st.container(border=True):
+                # 헤더
+                notion_url = PERSON_LINKS.get(position, "")
+                link_html = (
+                    f'<a href="{notion_url}" target="_blank" '
+                    f'style="text-decoration:none;background:#f5f3ff;color:{PRIMARY};'
+                    f'padding:3px 9px;border-radius:5px;font-size:0.72rem;'
+                    f'font-weight:600;margin-left:8px;">📔 JD</a>'
+                ) if notion_url else ""
+                st.markdown(
+                    f'<div style="font-size:1.1rem;font-weight:800;color:{PRIMARY};">'
+                    f'{icon} {position}{link_html}</div>'
+                    f'<div style="font-size:0.78rem;color:#8B8A95;margin-top:2px;">'
+                    f'담당: {reviewer} · 임계값 {threshold}점</div>',
+                    unsafe_allow_html=True,
+                )
+                st.divider()
+
+                # 수치
+                if not apps:
+                    st.caption("아직 지원자가 없습니다.")
+                    continue
+
+                ck = st.columns(3)
+                ck[0].markdown(
+                    f'<div style="text-align:center;"><div style="font-size:0.7rem;color:#8B8A95;">지원자</div>'
+                    f'<div style="font-size:1.4rem;font-weight:800;color:#111;">{len(apps)}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                ck[1].markdown(
+                    f'<div style="text-align:center;"><div style="font-size:0.7rem;color:#8B8A95;">분석</div>'
+                    f'<div style="font-size:1.4rem;font-weight:800;color:#10B981;">{len(scores)}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                ck[2].markdown(
+                    f'<div style="text-align:center;"><div style="font-size:0.7rem;color:#8B8A95;">평균 매칭</div>'
+                    f'<div style="font-size:1.4rem;font-weight:800;color:{PRIMARY};">{avg_score:.0f}점</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+                # 상태 분포
+                STATUS_COLORS = {
+                    "미검토": "#9CA3AF", "서류통과": "#3B82F6",
+                    "1차면접통과": "#6366F1", "2차면접통과": "#8B5CF6",
+                    "최종합격": "#10B981", "보류": "#F59E0B", "탈락": "#EF4444",
+                }
+                st.markdown(
+                    '<div style="font-size:0.75rem;color:#6B6A73;font-weight:600;margin-bottom:6px;">상태 분포</div>',
+                    unsafe_allow_html=True,
+                )
+                status_html = ""
+                for st_name, n in sorted(status_count.items(), key=lambda x: -x[1]):
+                    c = STATUS_COLORS.get(st_name, "#6B6A73")
+                    status_html += (
+                        f'<span style="display:inline-block;background:{c}15;color:{c};'
+                        f'padding:2px 9px;border-radius:10px;font-size:0.72rem;'
+                        f'font-weight:600;margin-right:4px;margin-bottom:4px;">{st_name} {n}</span>'
+                    )
+                st.markdown(f'<div>{status_html}</div>', unsafe_allow_html=True)
+
+                # 매칭 후보 TOP3
+                if high_pending:
+                    st.markdown(
+                        f'<div style="margin-top:14px;font-size:0.75rem;color:#6B6A73;font-weight:600;">'
+                        f'🎯 매칭 후보 (미검토) {len(high_pending)}명</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for r in high_pending[:3]:
+                        st.markdown(
+                            f'<div style="display:flex;justify-content:space-between;'
+                            f'padding:4px 0;border-bottom:1px solid #F3F4F6;font-size:0.85rem;">'
+                            f'<span>{r["name"]}</span>'
+                            f'<span style="font-weight:800;color:{PRIMARY};">{r["score"]}점</span>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+    # ── 최근 분석 5건 ──
+    st.write("")
+    st.markdown("### 🕐 최근 분석 활동")
+    recent = []
+    for pos, apps in all_applicants.items():
+        for a in apps:
+            analysis = all_analyses.get(a['id'])
+            if not analysis or 'error' in analysis:
+                continue
+            recent.append({
+                'ts': analysis.get('_analyzed_at', ''),
+                'position': pos,
+                'name': a['name'],
+                'score': analysis.get('매칭도', {}).get('점수', 0) or 0,
+                'oneliner': analysis.get('매칭도', {}).get('한줄평', '')[:80],
+            })
+    recent.sort(key=lambda x: x['ts'], reverse=True)
+
+    with st.container(border=True):
+        if not recent:
+            st.caption("아직 분석된 지원자가 없습니다.")
+        else:
+            for r in recent[:5]:
+                ts_short = r['ts'].replace('T', ' ')[:16] if r['ts'] else '-'
+                score_color = "#10B981" if r['score'] >= 70 else ("#F59E0B" if r['score'] >= 50 else "#EF4444")
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:14px;'
+                    f'padding:8px 0;border-bottom:1px solid #F3F4F6;">'
+                    f'<span style="color:#9CA3AF;font-size:0.78rem;width:115px;">{ts_short}</span>'
+                    f'<span style="color:{PRIMARY};font-size:0.78rem;font-weight:600;width:90px;">{r["position"]}</span>'
+                    f'<span style="font-weight:600;flex:1;">{r["name"]}</span>'
+                    f'<span style="background:{score_color}15;color:{score_color};'
+                    f'padding:3px 10px;border-radius:999px;font-weight:800;font-size:0.85rem;">'
+                    f'{r["score"]}점</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+
 def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_text: str,
                    ideal_profile: str = ""):
     """포지션별 지원자 리스트 + 매칭도."""
@@ -1314,7 +1515,7 @@ def main():
         st.divider()
         view_mode = st.radio(
             "보기",
-            options=["📊 지원자 목록", "📞 채용 프로세스", "📋 채용 공고",
+            options=["🏠 홈", "📊 지원자 목록", "📞 채용 프로세스", "📋 채용 공고",
                      "🎯 인재상 관리", "🧠 인재상 학습"],
             key='view_mode',
             label_visibility="collapsed",
@@ -1337,23 +1538,33 @@ def main():
     profiles = load_cached_profiles()
     ideal_profile = cache_store.merged_profile_for(position, profiles)
 
-    # JD 가져오기 (secrets[position_jd_text] override 우선, 다음 사람인 URL fetch)
-    jd_url = get_position_url(position)
+    # JD 가져오기 (홈 화면은 JD 불필요 → 다른 view_mode일 때만)
     jd_text = ""
-    try:
-        jd_text = load_jd(jd_url, position)
-    except Exception as e:
-        st.warning(f"JD 가져오기 실패: {e}")
-    if not jd_text:
-        st.info(
-            f"⚠️ '{position}' JD를 가져올 수 없습니다. "
-            f"secrets.toml `[position_jd_text]` 섹션에 JD 텍스트를 등록하거나 "
-            f"사람인 URL을 `[positions]`에 추가하세요."
-        )
+    if view_mode != "🏠 홈":
+        jd_url = get_position_url(position)
+        try:
+            jd_text = load_jd(jd_url, position)
+        except Exception as e:
+            st.warning(f"JD 가져오기 실패: {e}")
+        if not jd_text:
+            st.info(
+                f"⚠️ '{position}' JD를 가져올 수 없습니다. "
+                f"secrets.toml `[position_jd_text]` 섹션에 JD 텍스트를 등록하거나 "
+                f"사람인 URL을 `[positions]`에 추가하세요."
+            )
 
     # 라우팅
     selected = st.session_state.get('selected_applicant_id')
-    if view_mode == "🎯 인재상 관리":
+    if view_mode == "🏠 홈":
+        # 전체 포지션 지원자 로드 (cache hit ratio 높음)
+        all_apps = {}
+        for pos, fid in positions_map.items():
+            try:
+                all_apps[pos] = load_applicants_for_position(pos, fid)
+            except Exception:
+                all_apps[pos] = []
+        page_home(positions_map, all_apps, analyses, statuses)
+    elif view_mode == "🎯 인재상 관리":
         page_profiles(position, list(positions_map.keys()), profiles)
     elif view_mode == "🧠 인재상 학습":
         page_learn_profile(position, jd_text, profiles)
