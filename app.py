@@ -799,23 +799,6 @@ def page_home(positions_map: dict, all_applicants: dict,
                     unsafe_allow_html=True,
                 )
 
-                # 매칭 후보 TOP3
-                if high_pending:
-                    st.markdown(
-                        f'<div style="margin-top:14px;font-size:0.75rem;color:#6B6A73;font-weight:600;">'
-                        f'🎯 매칭 후보 (미검토) {len(high_pending)}명</div>',
-                        unsafe_allow_html=True,
-                    )
-                    for r in high_pending[:3]:
-                        st.markdown(
-                            f'<div style="display:flex;justify-content:space-between;'
-                            f'padding:4px 0;border-bottom:1px solid #F3F4F6;font-size:0.85rem;">'
-                            f'<span>{r["name"]}</span>'
-                            f'<span style="font-weight:800;color:{PRIMARY};">{r["score"]}점</span>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-
 
 def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_text: str,
                    ideal_profile: str = ""):
