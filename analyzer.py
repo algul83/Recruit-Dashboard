@@ -13,6 +13,7 @@ from typing import Any
 from anthropic import Anthropic
 
 MODEL = "claude-haiku-4-5"  # 비용 효율적이고 충분히 똑똑
+FALLBACK_MODEL = "claude-sonnet-4-6"  # JSON 파싱 실패 시 자동 fallback (더 강한 모델)
 
 
 def _client() -> Anthropic:
@@ -113,23 +114,36 @@ def analyze_applicant(
         f"# 제출 자료{docs_section}"
     )
 
-    msg = client.messages.create(
-        model=MODEL,
-        max_tokens=2500,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
-    )
+    def _try(model: str, max_tokens: int):
+        msg = client.messages.create(
+            model=model, max_tokens=max_tokens,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        text = msg.content[0].text.strip()
+        m = re.search(r'\{[\s\S]*\}', text)
+        if not m:
+            return None, text, msg, "JSON 블록 없음"
+        try:
+            return json.loads(m.group(0)), text, msg, None
+        except json.JSONDecodeError as e:
+            return None, text, msg, f"{e}"
 
-    text = msg.content[0].text.strip()
-    # JSON 블록 추출 (모델이 코드 블록 감쌀 수도 있음)
-    m = re.search(r'\{[\s\S]*\}', text)
-    if not m:
-        return {"error": "JSON 파싱 실패", "raw": text}
-    try:
-        data = json.loads(m.group(0))
-    except json.JSONDecodeError as e:
-        return {"error": f"JSON 파싱 실패: {e}", "raw": text}
+    # 1차: haiku
+    data, raw_text, msg, err = _try(MODEL, 2500)
+    used_model = MODEL
 
-    data["_model"] = MODEL
+    # 2차: sonnet으로 fallback (haiku 실패 시 또는 응답 truncated 의심)
+    if data is None:
+        try:
+            data, raw_text, msg, err = _try(FALLBACK_MODEL, 4000)
+            used_model = FALLBACK_MODEL if data else used_model
+        except Exception as e:
+            err = f"sonnet 재시도도 실패: {e}"
+
+    if data is None:
+        return {"error": f"JSON 파싱 실패: {err}", "raw": raw_text}
+
+    data["_model"] = used_model
     data["_tokens"] = {"input": msg.usage.input_tokens, "output": msg.usage.output_tokens}
     return data
