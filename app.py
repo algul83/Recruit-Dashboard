@@ -280,12 +280,53 @@ st.markdown(
     }}
 
     /* 최종 nuclear: stMain 안 모든 div 박스 시각 제거 (의도된 카드는 화이트리스트로 보호) */
-    section[data-testid="stMain"] div:not([data-testid="stVerticalBlockBorderWrapper"]):not(.kpi-box):not(.score-badge):not(.status-badge):not(.top-header):not(.top-logo):not(.top-tag) {{
+    section[data-testid="stMain"] div:not([data-testid="stVerticalBlockBorderWrapper"]):not(.kpi-box):not(.score-badge):not(.status-badge):not(.top-header):not(.top-logo):not(.top-tag):not(.home-pos-card):not(.home-pos-card *) {{
         background-color: transparent !important;
         background-image: none !important;
         box-shadow: none !important;
         border: 0 !important;
         outline: 0 !important;
+    }}
+
+    /* 홈 화면 포지션 카드 */
+    .home-pos-card {{
+        background: white !important;
+        border-radius: 14px !important;
+        overflow: hidden !important;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.08) !important;
+        height: 100%;
+    }}
+    .home-pos-card .hpc-header {{
+        padding: 18px 20px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }}
+    .home-pos-card .hpc-icon {{
+        width: 52px; height: 52px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.7rem; flex-shrink: 0;
+    }}
+    .home-pos-card .hpc-body {{
+        padding: 16px 20px 22px;
+        display: flex; justify-content: space-around; align-items: center;
+        border-top: 1px solid #F3F4F6;
+    }}
+    .home-pos-card .hpc-stat {{ text-align: center; flex: 1; }}
+    .home-pos-card .hpc-stat-label {{
+        font-size: 0.7rem; color: #8B8A95; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.5px;
+    }}
+    .home-pos-card .hpc-stat-value {{
+        font-size: 1.6rem; font-weight: 800; margin-top: 4px; line-height: 1;
+    }}
+    .home-pos-card .hpc-divider {{
+        width: 1px; height: 36px; background: #F3F4F6;
+    }}
+    .home-pos-card .hpc-jd {{
+        text-decoration: none; background: white;
+        padding: 5px 11px; border-radius: 6px; font-size: 0.72rem; font-weight: 700;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
     }}
     /* pseudo-element도 박스 시각 제거 */
     section[data-testid="stMain"] div::before,
@@ -758,63 +799,49 @@ def page_home(positions_map: dict, all_applicants: dict,
         avg_score = sum(scores) / len(scores) if scores else 0
 
         notion_btn = (
-            f'<a href="{t["notion"]}" target="_blank" '
-            f'style="text-decoration:none;background:white;color:{t["color"]};'
-            f'padding:5px 11px;border-radius:6px;font-size:0.72rem;font-weight:700;'
-            f'border:1px solid {t["color_light"]};box-shadow:0 1px 2px rgba(0,0,0,0.04);">'
+            f'<a class="hpc-jd" href="{t["notion"]}" target="_blank" '
+            f'style="color:{t["color"]};border:1px solid {t["color_light"]};">'
             f'📔 JD</a>'
         ) if t["notion"] else ""
 
+        # 카드 — class 기반 (globalCSS override 회피)
         body = (
-            f'<div style="background:white;border-radius:14px;overflow:hidden;'
-            f'border-top:5px solid {t["color"]};box-shadow:0 4px 14px rgba(0,0,0,0.06);'
-            f'height:100%;">'
-            # 헤더 영역 (그라데이션 배경 + 큰 아이콘 동그라미)
-            f'<div style="background:linear-gradient(135deg,{t["color_bg"]} 0%,white 100%);'
-            f'padding:18px 20px 16px;">'
-            f'<div style="display:flex;align-items:center;justify-content:space-between;">'
+            f'<div class="home-pos-card" style="border-top:5px solid {t["color"]};">'
+            f'<div class="hpc-header" '
+            f'style="background:linear-gradient(135deg,{t["color_bg"]} 0%,#fff 100%);">'
             f'<div style="display:flex;align-items:center;gap:14px;">'
-            f'<div style="background:{t["color_light"]};width:52px;height:52px;'
-            f'border-radius:50%;display:flex;align-items:center;justify-content:center;'
-            f'font-size:1.7rem;flex-shrink:0;">{t["icon"]}</div>'
+            f'<div class="hpc-icon" style="background:{t["color_light"]};">{t["icon"]}</div>'
             f'<div>'
-            f'<div style="font-size:1.15rem;font-weight:800;color:{t["color"]};'
-            f'line-height:1.1;">{position}</div>'
+            f'<div style="font-size:1.15rem;font-weight:800;color:{t["color"]};line-height:1.1;">'
+            f'{position}</div>'
             f'<div style="font-size:0.72rem;color:#6B6A73;margin-top:4px;font-weight:500;">'
             f'{t["team"]} · 담당 <b>{t["reviewer"]}</b> · 임계값 {threshold}점</div>'
             f'</div></div>'
             f'<div>{notion_btn}</div>'
-            f'</div></div>'
+            f'</div>'
         )
 
-        # 본문 (수치 3개)
         if not apps:
             body += (
                 f'<div style="padding:24px 20px;text-align:center;color:#9CA3AF;'
-                f'font-size:0.85rem;">아직 지원자가 없습니다.</div>'
+                f'font-size:0.85rem;border-top:1px solid #F3F4F6;">아직 지원자가 없습니다.</div>'
             )
         else:
             body += (
-                f'<div style="padding:18px 20px 22px;display:flex;'
-                f'justify-content:space-around;align-items:center;">'
-                f'<div style="text-align:center;flex:1;">'
-                f'<div style="font-size:0.7rem;color:#8B8A95;font-weight:600;'
-                f'text-transform:uppercase;letter-spacing:0.5px;">지원자</div>'
-                f'<div style="font-size:1.6rem;font-weight:800;color:#111;'
-                f'margin-top:4px;line-height:1;">{len(apps)}</div></div>'
-                f'<div style="width:1px;height:36px;background:#F3F4F6;"></div>'
-                f'<div style="text-align:center;flex:1;">'
-                f'<div style="font-size:0.7rem;color:#8B8A95;font-weight:600;'
-                f'text-transform:uppercase;letter-spacing:0.5px;">분석</div>'
-                f'<div style="font-size:1.6rem;font-weight:800;color:#10B981;'
-                f'margin-top:4px;line-height:1;">{len(scores)}</div></div>'
-                f'<div style="width:1px;height:36px;background:#F3F4F6;"></div>'
-                f'<div style="text-align:center;flex:1;">'
-                f'<div style="font-size:0.7rem;color:#8B8A95;font-weight:600;'
-                f'text-transform:uppercase;letter-spacing:0.5px;">평균 매칭</div>'
-                f'<div style="font-size:1.6rem;font-weight:800;color:{t["color"]};'
-                f'margin-top:4px;line-height:1;">{avg_score:.0f}<span style="font-size:0.85rem;">점</span></div>'
-                f'</div></div>'
+                f'<div class="hpc-body">'
+                f'<div class="hpc-stat">'
+                f'<div class="hpc-stat-label">지원자</div>'
+                f'<div class="hpc-stat-value" style="color:#111;">{len(apps)}</div></div>'
+                f'<div class="hpc-divider"></div>'
+                f'<div class="hpc-stat">'
+                f'<div class="hpc-stat-label">분석</div>'
+                f'<div class="hpc-stat-value" style="color:#10B981;">{len(scores)}</div></div>'
+                f'<div class="hpc-divider"></div>'
+                f'<div class="hpc-stat">'
+                f'<div class="hpc-stat-label">평균 매칭</div>'
+                f'<div class="hpc-stat-value" style="color:{t["color"]};">'
+                f'{avg_score:.0f}<span style="font-size:0.85rem;">점</span></div></div>'
+                f'</div>'
             )
         body += '</div>'
 
