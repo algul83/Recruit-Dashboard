@@ -612,10 +612,15 @@ def check_password() -> bool:
 
 
 def render_top_header():
+    token = _auth_token()
+    home_href = f"?page=home&auth={token}" if token else "?page=home"
     st.markdown(
         f'<div class="top-header">'
+        f'<a href="{home_href}" target="_self" '
+        f'style="text-decoration:none;display:flex;align-items:center;gap:20px;cursor:pointer;">'
         f'<div class="top-logo">🔍 원스글로벌</div>'
         f'<div class="top-tag">채용 인사이트</div>'
+        f'</a>'
         f'<div style="flex:1;"></div>'
         f'<a href="https://connectdi-dashboard.streamlit.app" target="_blank" '
         f'style="color:white;text-decoration:none;background:rgba(255,255,255,0.18);'
@@ -1462,6 +1467,14 @@ def page_profiles(current_position: str, all_positions: list[str], profiles: dic
 def main():
     if not check_password():
         return
+
+    # 헤더 로고 클릭 시 홈 화면으로 이동 (?page=home 처리)
+    if st.query_params.get('page') == 'home':
+        st.session_state['view_mode'] = "🏠 홈"
+        auth_param = st.query_params.get('auth')
+        st.query_params.clear()
+        if auth_param:
+            st.query_params['auth'] = auth_param
 
     render_top_header()
 
