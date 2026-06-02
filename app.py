@@ -1258,6 +1258,12 @@ def _render_analysis(applicant: dict, analysis: dict,
                     badge_text = c.get('기간', '')
                 company = c.get('회사명', '') or '-'
                 role = c.get('역할', '') or ''
+                quit_reason = (c.get('퇴사사유', '') or '').strip()
+                quit_html = (
+                    f'<div style="color:#6B6A73;font-size:0.78rem;margin-top:4px;">'
+                    f'<span style="background:#F3F4F6;padding:2px 8px;border-radius:4px;">'
+                    f'퇴사사유 · {quit_reason}</span></div>'
+                ) if quit_reason else ""
                 st.markdown(
                     f'<div style="background:white;border-left:4px solid {color};'
                     f'padding:10px 14px;margin-bottom:8px;border-radius:6px;'
@@ -1266,7 +1272,9 @@ def _render_analysis(applicant: dict, analysis: dict,
                     f'<div><b style="color:{color};font-size:1rem;">{company}</b>'
                     f'<span style="color:#6B6A73;margin-left:8px;font-size:0.9rem;">{role}</span></div>'
                     f'<div style="color:{color};font-weight:700;font-size:0.85rem;">{badge_text}</div>'
-                    f'</div></div>',
+                    f'</div>'
+                    f'{quit_html}'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
 
