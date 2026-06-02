@@ -81,6 +81,7 @@ HIGH_MATCH_REVIEWERS = {
     "개발자": ["Furi"],
     "AI연구원": ["Y"],
     "Project Leader": ["Lina"],
+    "웹디자이너": ["Furi"],
 }
 
 
