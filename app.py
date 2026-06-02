@@ -486,6 +486,7 @@ def _advance_status(applicant: dict, new_status: str,
             matching_score=score,
             owner_name=owner_first,
             action_text=action_text,
+            applicant_id=applicant['id'],
         )
         if result.get('ok'):
             st.toast(f"✅ '{new_status}' + Slack 알림 전송 완료", icon="📣")
@@ -798,6 +799,7 @@ def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "",
                     position=applicant_dict['position'],
                     score=score,
                     oneliner=result.get('매칭도', {}).get('한줄평', ''),
+                    applicant_id=applicant_dict['id'],
                 )
             except Exception:
                 pass
@@ -1569,6 +1571,18 @@ def main():
     # 헤더 로고 클릭 시 홈 화면으로 이동 (?page=home 처리)
     if st.query_params.get('page') == 'home':
         st.session_state['view_mode'] = "🏠 홈"
+        auth_param = st.query_params.get('auth')
+        st.query_params.clear()
+        if auth_param:
+            st.query_params['auth'] = auth_param
+
+    # Slack 알림에서 ?position=...&applicant=... 클릭 시 해당 지원자 상세로 이동
+    qp_position = st.query_params.get('position')
+    qp_applicant = st.query_params.get('applicant')
+    if qp_position and qp_applicant:
+        st.session_state['nav_position'] = qp_position
+        st.session_state['view_mode'] = "📊 지원자 목록"
+        st.session_state['selected_applicant_id'] = qp_applicant
         auth_param = st.query_params.get('auth')
         st.query_params.clear()
         if auth_param:

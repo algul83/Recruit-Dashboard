@@ -131,6 +131,7 @@ def analyze_one(applicant, jd_text: str, ideal_profile: str = "",
                     position=applicant.position,
                     score=score,
                     oneliner=result.get('매칭도', {}).get('한줄평', ''),
+                    applicant_id=applicant.id,
                 )
             except Exception as e:
                 print(f"  [warn] Slack 알림 실패: {e}")

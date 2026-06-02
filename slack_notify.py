@@ -2,8 +2,17 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import quote
 
 import requests
+
+# Dashboard URL (지원자 상세 페이지 deep link용)
+DASHBOARD_URL = "https://onesglobal-recruit.streamlit.app"
+
+
+def applicant_link(position: str, applicant_id: str) -> str:
+    """Dashboard에서 해당 지원자 상세로 바로 가는 URL."""
+    return f"{DASHBOARD_URL}/?position={quote(position)}&applicant={applicant_id}"
 
 # bulk_analyze.py 같은 standalone 실행 시 주입용
 _overrides: dict = {}
@@ -96,17 +105,24 @@ def is_pending_review(status: str) -> bool:
 
 
 def notify_high_match(applicant_name: str, position: str, score: int,
-                       oneliner: str = "") -> dict:
-    """매칭도 70점 이상 지원자 발생 시 담당자 멘션 알림."""
+                       oneliner: str = "", applicant_id: str = "") -> dict:
+    """매칭도 70점 이상 지원자 발생 시 담당자 멘션 알림.
+
+    applicant_id 주면 dashboard 상세 페이지 deep link 포함.
+    """
     reviewers = HIGH_MATCH_REVIEWERS.get(position, [])
     if not reviewers:
         return {"ok": False, "error": f"포지션 '{position}' 담당자 미설정"}
     mentions = " ".join(mention(n) for n in reviewers)
     one_line = f"\n💬 _{oneliner}_" if oneliner else ""
+    link_line = ""
+    if applicant_id:
+        url = applicant_link(position, applicant_id)
+        link_line = f"\n🔗 <{url}|상세 보기>"
     text = (
         f"🎯 *매칭도 {score}점 신규 지원자* — {position}\n"
         f"👤 *{applicant_name}*  ·  {mentions} 서류 검토 부탁드려요."
-        f"{one_line}"
+        f"{one_line}{link_line}"
     )
     return post_message(text)
 
@@ -114,13 +130,18 @@ def notify_high_match(applicant_name: str, position: str, score: int,
 def notify_status_change(
     applicant_name: str, position: str, prev_status: str, new_status: str,
     matching_score: int | None, owner_name: str, action_text: str,
-    decided_by: str = "",
+    decided_by: str = "", applicant_id: str = "",
 ) -> dict:
-    """상태 전환 시 알림. 담당자 멘션 + 지원자 정보 + 다음 액션."""
+    """상태 전환 시 알림. 담당자 멘션 + 지원자 정보 + 다음 액션 + deep link."""
     score_str = f"매칭도 *{matching_score}점* · " if matching_score is not None else ""
     decided = f" (결정: {mention(decided_by)})" if decided_by else ""
+    link_line = ""
+    if applicant_id:
+        url = applicant_link(position, applicant_id)
+        link_line = f"\n🔗 <{url}|상세 보기>"
     text = (
         f"📋 *{position} · {applicant_name}* — `{prev_status}` → `{new_status}`{decided}\n"
         f"{score_str}다음: {mention(owner_name)} {action_text}"
+        f"{link_line}"
     )
     return post_message(text)
