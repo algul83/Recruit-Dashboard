@@ -57,6 +57,8 @@ def fetch_jd(position: str, url: str, jd_text_override: str = "") -> str:
     """
     if jd_text_override and jd_text_override.strip():
         return jd_text_override.strip()
+    if not url:
+        return ""
     if "saramin.co.kr" in url:
         return fetch_saramin_jd(url)
     # 잡코리아 등 JS 렌더링 → fetch 불가, 빈 문자열 반환

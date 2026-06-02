@@ -558,11 +558,11 @@ def get_shared_drive_id() -> str:
         return os.environ.get("DRIVE_RECRUIT_ID", "0ADZEJI4H5G9QUk9PVA")
 
 
-def get_position_url(position: str) -> str | None:
+def get_position_url(position: str) -> str:
     try:
-        return st.secrets.get("positions", {}).get(position)
+        return st.secrets.get("positions", {}).get(position, "") or ""
     except Exception:
-        return None
+        return ""
 
 
 def score_class(score: int) -> str:
