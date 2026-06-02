@@ -719,14 +719,19 @@ def _collect_applicant_assets(files: list[dict]) -> tuple[dict, list[dict]]:
                     vision_items.append({'type': 'pdf', 'data': data, 'name': display_name})
                 if text and not text.startswith('['):
                     documents[display_name] = text  # 짧아도 있으면 함께
+            # PDF 텍스트에서 URL 추출 → 자동 fetch (포트폴리오 링크 등)
+            if text and not text.startswith('['):
+                _fetch_inline_urls(text, display_name, documents, vision_items)
         elif fname_lower.endswith('.pptx'):
             text = extractors.extract_pptx(data)
             if text and not text.startswith('['):
                 documents[display_name] = text
+                _fetch_inline_urls(text, display_name, documents, vision_items)
         elif fname_lower.endswith(('.html', '.htm')):
             text = extractors.extract_html(data)
             if text and not text.startswith('['):
                 documents[display_name] = text
+                _fetch_inline_urls(text, display_name, documents, vision_items)
         elif extractors.is_image_filename(fname):
             if len(data) <= extractors.MAX_IMAGE_SIZE:
                 vision_items.append({
@@ -739,6 +744,24 @@ def _collect_applicant_assets(files: list[dict]) -> tuple[dict, list[dict]]:
                 if len(vision_items) >= MAX_VISION_ITEMS:
                     break
                 _process_one(it['name'], it['data'], source_label=display_name)
+
+    def _fetch_inline_urls(text: str, source: str, docs: dict, vitems: list):
+        """문서 텍스트 내 URL 자동 fetch → 결과를 docs/vitems에 추가."""
+        for url in extractors.extract_urls(text):
+            if len(vitems) >= MAX_VISION_ITEMS:
+                break
+            fetched = extractors.fetch_url_content(url)
+            if not fetched:
+                continue
+            if fetched['type'] == 'text':
+                docs[f"{source} → {fetched['name']}"] = fetched['data']
+            elif fetched['type'] == 'pdf':
+                vitems.append({'type': 'pdf', 'data': fetched['data'],
+                               'name': fetched['name']})
+            elif fetched['type'] == 'image':
+                vitems.append({'type': 'image', 'data': fetched['data'],
+                               'name': fetched['name'],
+                               'media_type': fetched.get('media_type', 'image/png')})
 
     for f in files:
         try:
