@@ -78,10 +78,10 @@ HIGH_MATCH_THRESHOLDS = {
 
 # 포지션별로 멘션 받을 사람 (서류 검토 단계 담당자)
 HIGH_MATCH_REVIEWERS = {
-    "개발자": ["Lina"],
+    "개발자": ["Furi"],
     "AI연구원": ["Y"],
     "Project Leader": ["Lina"],
-    "웹디자이너": ["Furi"],
+    "웹디자이너": ["Lina"],
 }
 
 

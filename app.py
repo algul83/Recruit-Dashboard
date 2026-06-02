@@ -404,8 +404,8 @@ SLACK_CHANNEL = "#원스글로벌_채용"
 
 PROCESS_FLOW = {
     "개발자": {
-        "서류검토자": "Lina",
-        "1차면접관": "Lina",
+        "서류검토자": "Furi",
+        "1차면접관": "Furi",
         "2차면접관": "Furi · Y · Lina",
         "1차면접_연락": "Owen",
         "2차면접_연락": "Owen",
@@ -428,8 +428,8 @@ PROCESS_FLOW = {
         "최종연락_연봉협상": "Lina",
     },
     "웹디자이너": {
-        "서류검토자": "Furi",
-        "1차면접관": "Furi",
+        "서류검토자": "Lina",
+        "1차면접관": "Lina",
         "2차면접관": "Furi · Y · Lina",
         "1차면접_연락": "Owen",
         "2차면접_연락": "Owen",
@@ -831,7 +831,7 @@ def page_home(positions_map: dict, all_applicants: dict,
     # ── 포지션별 카드 (시각 테마: 팀별 컬러 + 아이콘) ──
     POSITION_THEMES = {
         "개발자": {
-            "icon": "👩‍💻", "team": "Tech팀", "reviewer": "Lina",
+            "icon": "👩‍💻", "team": "Tech팀", "reviewer": "Furi",
             "color": "#2563EB", "color_light": "#DBEAFE", "color_bg": "#EFF6FF",
             "notion": "https://www.notion.so/3253a7334743807998f3c9c0f8d589be",
         },
@@ -846,7 +846,7 @@ def page_home(positions_map: dict, all_applicants: dict,
             "notion": "https://www.notion.so/b462514264984e968434391940ca4349",
         },
         "웹디자이너": {
-            "icon": "🎨", "team": "Tech팀", "reviewer": "Furi",
+            "icon": "🎨", "team": "Tech팀", "reviewer": "Lina",
             "color": "#DB2777", "color_light": "#FCE7F3", "color_bg": "#FDF2F8",
             "notion": "https://www.notion.so/9e32e8cc780045099990c0fd27f39b2b",
         },
