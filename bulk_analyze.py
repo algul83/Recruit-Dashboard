@@ -38,22 +38,66 @@ slack_notify.configure(
 )
 
 
+SHORT_TEXT_THRESHOLD = 200
+MAX_VISION_ITEMS = 25
+
+
+def _collect_assets(files) -> tuple[dict, list[dict]]:
+    """파일들 → (documents 텍스트dict, vision_items 리스트). app.py와 동일 로직."""
+    documents: dict[str, str] = {}
+    vision_items: list[dict] = []
+
+    def _process_one(fname: str, data: bytes, source_label: str = ""):
+        if len(vision_items) >= MAX_VISION_ITEMS:
+            return
+        fname_lower = fname.lower()
+        display_name = f"{source_label}/{fname}" if source_label else fname
+        if fname_lower.endswith('.pdf'):
+            text = extractors.extract_pdf(data)
+            if text and not text.startswith('[') and len(text) >= SHORT_TEXT_THRESHOLD:
+                documents[display_name] = text
+            else:
+                if len(data) <= extractors.MAX_PDF_SIZE:
+                    vision_items.append({'type': 'pdf', 'data': data, 'name': display_name})
+                if text and not text.startswith('['):
+                    documents[display_name] = text
+        elif fname_lower.endswith('.pptx'):
+            text = extractors.extract_pptx(data)
+            if text and not text.startswith('['):
+                documents[display_name] = text
+        elif fname_lower.endswith(('.html', '.htm')):
+            text = extractors.extract_html(data)
+            if text and not text.startswith('['):
+                documents[display_name] = text
+        elif extractors.is_image_filename(fname):
+            if len(data) <= extractors.MAX_IMAGE_SIZE:
+                vision_items.append({
+                    'type': 'image', 'data': data, 'name': display_name,
+                    'media_type': extractors.image_media_type(fname),
+                })
+        elif fname_lower.endswith('.zip'):
+            for it in extractors.extract_zip(data):
+                if len(vision_items) >= MAX_VISION_ITEMS:
+                    break
+                _process_one(it['name'], it['data'], source_label=display_name)
+
+    for f in files:
+        try:
+            blob = data_loader.download_file(f.id)
+            _process_one(f.name, blob)
+        except Exception as e:
+            print(f"  [warn] {f.name}: {e}")
+    return documents, vision_items
+
+
 def analyze_one(applicant, jd_text: str, ideal_profile: str = "",
                 notify_high: bool = True, current_status: str = "") -> dict:
-    documents = {}
-    for f in applicant.files:
-        if f.name.endswith(('.pdf', '.pptx', '.html')):
-            try:
-                data = data_loader.download_file(f.id)
-                text = extractors.extract_any(f.name, data)
-                if text and not text.startswith('['):
-                    documents[f.name] = text
-            except Exception as e:
-                print(f"  [warn] {f.name}: {e}")
-    if not documents:
-        return {'error': '추출 가능한 문서 없음', '_analyzed_at': datetime.now().isoformat(timespec='seconds')}
+    documents, vision_items = _collect_assets(applicant.files)
+    if not documents and not vision_items:
+        return {'error': '추출 가능한 자료 없음', '_analyzed_at': datetime.now().isoformat(timespec='seconds')}
     result = analyzer.analyze_applicant(
-        jd_text, applicant.name, documents, ideal_profile=ideal_profile,
+        jd_text, applicant.name, documents,
+        ideal_profile=ideal_profile, vision_items=vision_items,
     )
     result['_analyzed_at'] = datetime.now().isoformat(timespec='seconds')
 

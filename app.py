@@ -688,27 +688,80 @@ def load_cached_profiles():
 
 
 # ============== 분석 실행 ==============
+SHORT_TEXT_THRESHOLD = 200  # PDF 텍스트 추출 결과가 이보다 짧으면 vision으로 추가 전달
+MAX_VISION_ITEMS = 25  # 한 지원자당 vision 자료 개수 상한
+
+
+def _collect_applicant_assets(files: list[dict]) -> tuple[dict, list[dict]]:
+    """지원자 파일들 → (documents 텍스트dict, vision_items 리스트).
+
+    - PDF/PPTX/HTML: 텍스트 추출 후 documents에. 단 PDF 텍스트가 너무 짧으면 vision_items에도 추가.
+    - 이미지(.jpg/.png/.webp/.gif): vision_items에만 추가 (이미지 ≤5MB)
+    - ZIP: 풀어서 내부 PDF/이미지/PPTX/HTML 동일 로직 적용
+    """
+    documents: dict[str, str] = {}
+    vision_items: list[dict] = []
+
+    def _process_one(fname: str, data: bytes, source_label: str = ""):
+        """파일 1개 처리 — documents/vision_items에 추가."""
+        if len(vision_items) >= MAX_VISION_ITEMS:
+            return
+        fname_lower = fname.lower()
+        display_name = f"{source_label}/{fname}" if source_label else fname
+
+        if fname_lower.endswith('.pdf'):
+            text = extractors.extract_pdf(data)
+            if text and not text.startswith('[') and len(text) >= SHORT_TEXT_THRESHOLD:
+                documents[display_name] = text
+            else:
+                # 텍스트 짧음 → vision (PDF document block)으로 전달
+                if len(data) <= extractors.MAX_PDF_SIZE:
+                    vision_items.append({'type': 'pdf', 'data': data, 'name': display_name})
+                if text and not text.startswith('['):
+                    documents[display_name] = text  # 짧아도 있으면 함께
+        elif fname_lower.endswith('.pptx'):
+            text = extractors.extract_pptx(data)
+            if text and not text.startswith('['):
+                documents[display_name] = text
+        elif fname_lower.endswith(('.html', '.htm')):
+            text = extractors.extract_html(data)
+            if text and not text.startswith('['):
+                documents[display_name] = text
+        elif extractors.is_image_filename(fname):
+            if len(data) <= extractors.MAX_IMAGE_SIZE:
+                vision_items.append({
+                    'type': 'image', 'data': data, 'name': display_name,
+                    'media_type': extractors.image_media_type(fname),
+                })
+        elif fname_lower.endswith('.zip'):
+            inner_items = extractors.extract_zip(data)
+            for it in inner_items:
+                if len(vision_items) >= MAX_VISION_ITEMS:
+                    break
+                _process_one(it['name'], it['data'], source_label=display_name)
+
+    for f in files:
+        try:
+            blob = data_loader.download_file(f['id'])
+            _process_one(f['name'], blob)
+        except Exception as e:
+            documents[f['name']] = f"[다운로드 실패: {e}]"
+
+    return documents, vision_items
+
+
 def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "",
                 notify_high: bool = True, current_status: str = "") -> dict:
     """지원자 1명 분석 — 자료 다운로드 후 Claude API 호출.
 
+    PDF/PPTX/HTML 텍스트 + 이미지·zip·짧은텍스트 PDF는 vision으로 평가.
     notify_high=True 시 매칭도 >=임계값이면서 미검토 상태일 때만 Slack 알림.
-    이미 서류통과/탈락/보류 등으로 검토된 지원자는 알림 skip.
     """
-    documents = {}
-    for f in applicant_dict['files']:
-        fname = f['name']
-        if fname.endswith(('.pdf', '.pptx', '.html')):
-            try:
-                data = data_loader.download_file(f['id'])
-                text = extractors.extract_any(fname, data)
-                if text and not text.startswith('['):
-                    documents[fname] = text
-            except Exception as e:
-                documents[fname] = f"[다운로드 실패: {e}]"
+    documents, vision_items = _collect_applicant_assets(applicant_dict['files'])
 
     result = analyzer.analyze_applicant(
-        jd_text, applicant_dict['name'], documents, ideal_profile=ideal_profile,
+        jd_text, applicant_dict['name'], documents,
+        ideal_profile=ideal_profile, vision_items=vision_items,
     )
     result['_analyzed_at'] = datetime.now().isoformat(timespec='seconds')
 

@@ -160,10 +160,16 @@ def analyze_applicant(
     jd_text: str,
     applicant_name: str,
     documents: dict[str, str],  # {파일명: 텍스트}
-    ideal_profile: str = "",  # 회사 인재상 (포지션별 + 공통)
-    hired_reference: str = "",  # 합격자 요약 (Few-shot reference)
+    ideal_profile: str = "",
+    hired_reference: str = "",
+    vision_items: list[dict] | None = None,  # [{type: 'pdf'|'image', media_type, data: bytes, name}]
 ) -> dict[str, Any]:
-    """지원자 1명 분석 → JSON dict."""
+    """지원자 1명 분석 → JSON dict.
+
+    vision_items가 있으면 Claude vision/document content block 사용 (sonnet 모델).
+    디자이너 포트폴리오·이미지·zip 내부 자료 평가 시 활용.
+    """
+    import base64
     client = _client()
 
     docs_section = ""
@@ -186,19 +192,56 @@ def analyze_applicant(
             f"\n매칭도 평가 시 이 합격자들과 얼마나 패턴이 비슷한지도 함께 고려하세요."
         )
 
-    user_message = (
+    vision_section = ""
+    if vision_items:
+        vision_section = (
+            f"\n\n# 시각 자료 ({len(vision_items)}개)\n"
+            f"아래 첨부된 포트폴리오 PDF · 디자인 이미지 등 시각 자료를 직접 검토해서 "
+            f"디자인 품질·일관성·표현력·컨셉을 평가에 반영하세요. "
+            f"디자이너 포지션 평가 시 시각 자료 비중을 높게 두세요."
+        )
+
+    user_text = (
         f"# 채용 공고 (JD)\n{jd_text}"
         f"{profile_section}"
-        f"{hired_section}\n\n"
+        f"{hired_section}"
+        f"{vision_section}\n\n"
         f"# 지원자: {applicant_name}\n"
-        f"# 제출 자료{docs_section}"
+        f"# 제출 자료 (텍스트){docs_section}"
     )
+
+    # vision content block 구성
+    content_blocks: list[dict] = []
+    if vision_items:
+        for item in vision_items[:30]:  # max 30개 (안전 마진)
+            try:
+                b64 = base64.standard_b64encode(item['data']).decode('ascii')
+            except Exception:
+                continue
+            if item['type'] == 'pdf':
+                content_blocks.append({
+                    "type": "document",
+                    "source": {"type": "base64", "media_type": "application/pdf", "data": b64},
+                    "title": item.get('name', 'document.pdf')[:100],
+                })
+            elif item['type'] == 'image':
+                content_blocks.append({
+                    "type": "image",
+                    "source": {"type": "base64",
+                               "media_type": item.get('media_type', 'image/png'), "data": b64},
+                })
+    content_blocks.append({"type": "text", "text": user_text})
+
+    # vision 자료 있으면 처음부터 sonnet (vision 더 강함). 없으면 haiku → sonnet fallback.
+    has_vision = bool(vision_items)
+    primary_model = FALLBACK_MODEL if has_vision else MODEL
+    primary_max = 4000 if has_vision else 2500
 
     def _try(model: str, max_tokens: int):
         msg = client.messages.create(
             model=model, max_tokens=max_tokens,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
+            messages=[{"role": "user", "content": content_blocks}],
         )
         text = msg.content[0].text.strip()
         m = re.search(r'\{[\s\S]*\}', text)
@@ -209,12 +252,11 @@ def analyze_applicant(
         except json.JSONDecodeError as e:
             return None, text, msg, f"{e}"
 
-    # 1차: haiku
-    data, raw_text, msg, err = _try(MODEL, 2500)
-    used_model = MODEL
+    data, raw_text, msg, err = _try(primary_model, primary_max)
+    used_model = primary_model
 
-    # 2차: sonnet으로 fallback (haiku 실패 시 또는 응답 truncated 의심)
-    if data is None:
+    # haiku 실패 시 sonnet fallback (vision 없는 경우)
+    if data is None and not has_vision:
         try:
             data, raw_text, msg, err = _try(FALLBACK_MODEL, 4000)
             used_model = FALLBACK_MODEL if data else used_model
@@ -226,4 +268,5 @@ def analyze_applicant(
 
     data["_model"] = used_model
     data["_tokens"] = {"input": msg.usage.input_tokens, "output": msg.usage.output_tokens}
+    data["_vision_count"] = len(vision_items) if vision_items else 0
     return data

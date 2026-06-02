@@ -1,8 +1,55 @@
-"""PDF / PPTX / HTML에서 텍스트 추출."""
+"""PDF / PPTX / HTML / ZIP / 이미지 처리.
+
+- 텍스트 추출: PDF, PPTX, HTML
+- Vision 자료 수집: 이미지(.jpg/.png/.webp/.gif), 이미지 기반 PDF, zip 내부 파일
+"""
 from __future__ import annotations
 
 import io
 import re
+import zipfile
+
+IMAGE_EXTS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
+IMAGE_MIME = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
+}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB (Anthropic 제한)
+MAX_PDF_SIZE = 32 * 1024 * 1024   # 32 MB (Anthropic 제한)
+
+
+def is_image_filename(name: str) -> bool:
+    return name.lower().endswith(IMAGE_EXTS)
+
+
+def image_media_type(name: str) -> str:
+    for ext, mime in IMAGE_MIME.items():
+        if name.lower().endswith(ext):
+            return mime
+    return 'image/png'
+
+
+def extract_zip(data: bytes) -> list[dict]:
+    """zip 풀어서 안의 PDF/이미지/PPTX/HTML 반환 [{name, data, ext}]."""
+    out = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                # __MACOSX 등 시스템 파일 제외
+                if info.filename.startswith('__MACOSX') or info.filename.startswith('.'):
+                    continue
+                name_lower = info.filename.lower()
+                if name_lower.endswith(('.pdf', '.pptx', '.html', '.htm') + IMAGE_EXTS):
+                    if info.file_size > MAX_PDF_SIZE:
+                        continue
+                    content = zf.read(info.filename)
+                    ext = name_lower.split('.')[-1]
+                    out.append({'name': info.filename, 'data': content, 'ext': ext})
+    except Exception:
+        pass
+    return out
 
 
 def extract_pdf(data: bytes) -> str:
