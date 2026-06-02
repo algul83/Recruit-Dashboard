@@ -38,12 +38,16 @@ jobs:
         env:
           RECRUIT_SECRETS_TOML: ${{ secrets.RECRUIT_SECRETS_TOML }}
 
-      - name: Analyze AI연구원
-        run: python bulk_analyze.py AI연구원
-        continue-on-error: true
-
       - name: Analyze 개발자
         run: python bulk_analyze.py 개발자
+        continue-on-error: true
+
+      - name: Analyze Project Leader
+        run: python bulk_analyze.py "Project Leader"
+        continue-on-error: true
+
+      - name: Analyze 웹디자이너
+        run: python bulk_analyze.py 웹디자이너
         continue-on-error: true
 
       - name: Cleanup
