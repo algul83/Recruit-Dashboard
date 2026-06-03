@@ -1176,9 +1176,15 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
                     st.warning("상태를 선택해주세요.")
                 else:
                     prev_st = (status_data.get('status') or '미검토')
+                    # 상태 변경 시 자동 로그 라인 추가 (사용자 입력 메모와 함께 보존)
+                    final_notes = (notes or '').strip()
+                    if prev_st != new_status:
+                        log_ts = datetime.now().isoformat(timespec='minutes')
+                        auto_log = f"[{log_ts}] {prev_st} → {new_status}"
+                        final_notes = f"{final_notes}\n{auto_log}" if final_notes else auto_log
                     all_statuses[applicant['id']] = {
                         'status': new_status,
-                        'notes': notes,
+                        'notes': final_notes,
                         'updated_at': datetime.now().isoformat(timespec='seconds'),
                     }
                     cache_store.save_statuses(get_shared_drive_id(), all_statuses)
