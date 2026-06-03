@@ -452,6 +452,11 @@ def _next_status_choices(status: str) -> list[tuple[str, str, str]]:
         choices.append((l, n, "secondary"))
         choices.append(("❌ 탈락", "탈락", "secondary"))
         choices.append(("⏸️ 보류", "보류", "secondary"))
+    elif status in ("탈락", "보류"):
+        # 탈락·보류에서 다시 진행 단계로 되돌리기 — Slack 알림 자동 발송
+        choices.append(("↩️ 서류통과로", "서류통과", "secondary"))
+        choices.append(("↩️ 1차면접통과로", "1차면접통과", "secondary"))
+        choices.append(("↩️ 2차면접통과로", "2차면접통과", "secondary"))
     return choices
 
 
@@ -1170,6 +1175,7 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
                 if not new_status:
                     st.warning("상태를 선택해주세요.")
                 else:
+                    prev_st = (status_data.get('status') or '미검토')
                     all_statuses[applicant['id']] = {
                         'status': new_status,
                         'notes': notes,
@@ -1177,6 +1183,27 @@ def page_applicant_detail(applicant: dict, analysis: dict, status_data: dict,
                     }
                     cache_store.save_statuses(get_shared_drive_id(), all_statuses)
                     load_cached_statuses.clear()
+                    # 상태 실제 변경 + 새 상태에 next action 있으면 Slack 알림
+                    if prev_st != new_status:
+                        next_act_new = next_action_for(applicant['position'], new_status)
+                        if next_act_new and next_act_new['owner'] != '—':
+                            owner_first = next_act_new['owner'].split(' · ')[0]
+                            score = analysis.get('매칭도', {}).get('점수') if analysis else None
+                            try:
+                                r = slack_notify.notify_status_change(
+                                    applicant_name=applicant['name'],
+                                    position=applicant['position'],
+                                    prev_status=prev_st,
+                                    new_status=new_status,
+                                    matching_score=score,
+                                    owner_name=owner_first,
+                                    action_text=next_act_new['action'],
+                                    applicant_id=applicant['id'],
+                                )
+                                if r.get('ok'):
+                                    st.toast(f"📣 Slack 알림 발송됨", icon="📣")
+                            except Exception:
+                                pass
                     st.success("저장 완료")
                     st.rerun()
 
