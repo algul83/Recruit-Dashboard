@@ -11,17 +11,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Ping Streamlit app
+      - name: Ping Streamlit app (real container hit)
         run: |
           URL="https://onesglobal-recruit.streamlit.app"
-          echo "Pinging $URL"
-          # 리다이렉트 추적 안 함: 인증벽 있는 앱은 303 → auth 페이지 → 무한 루프 발생.
-          # Streamlit 엣지에 요청이 닿는 것 자체가 traffic 카운트라 303만 받아도 sleep 방지 OK.
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL")
-          echo "HTTP $HTTP_CODE"
-          # 1xx~3xx 응답이면 엣지 도달 성공
-          if [ "$HTTP_CODE" -ge 100 ] && [ "$HTTP_CODE" -lt 400 ]; then
-            echo "✅ Ping reached Streamlit edge — sleep timer reset"
+          COOKIES=$(mktemp)
+          echo "Pinging $URL with cookie jar"
+          # Streamlit Cloud 세션 쿠키 받고 redirect 따라가야 실제 앱 컨테이너에 도달.
+          # 쿠키 없이 -L 사용 시 무한 루프, 쿠키 없이 단순 GET은 엣지에서 303만 받고 끝.
+          HTTP_CODE=$(curl -sL -c "$COOKIES" -b "$COOKIES" -o /dev/null \
+            -w "%{http_code}" --max-time 60 "$URL")
+          echo "Final HTTP: $HTTP_CODE"
+          rm -f "$COOKIES"
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ App container reached — sleep timer reset"
           else
             echo "❌ Unexpected response: $HTTP_CODE"
             exit 1
