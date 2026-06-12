@@ -163,9 +163,14 @@ def notify_status_change(
         link_line = f"\n🔗 <{url}|상세 보기>"
     # action_text 안의 이름들(2차면접관 등)을 멘션으로 자동 치환
     action_mentioned = mentionize_names(action_text)
+    # action_text가 owner_name으로 시작하면 owner 별도 멘션을 생략 (중복 방지)
+    if action_text.lstrip().startswith(owner_name):
+        next_line = f"다음: {action_mentioned}"
+    else:
+        next_line = f"다음: {mention(owner_name)} {action_mentioned}"
     text = (
         f"📋 *{position} · {applicant_name}* — `{prev_status}` → `{new_status}`{decided}\n"
-        f"{score_str}다음: {mention(owner_name)} {action_mentioned}"
+        f"{score_str}{next_line}"
         f"{link_line}"
     )
     return post_message(text)

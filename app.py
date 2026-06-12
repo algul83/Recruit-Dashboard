@@ -526,7 +526,7 @@ def next_action_for(position: str, status: str) -> dict | None:
         "1차면접통과": {
             "label": "3️⃣ 2차면접 일정 안내",
             "owner": flow["2차면접_연락"],
-            "action": f"지원자에게 연락해서 2차면접 일정을 조율해주세요. 2차면접은 {second_interviewers}가 진행합니다.",
+            "action": f"{flow['2차면접_연락']}이 지원자에게 연락해서 2차면접 일정을 조율해주세요. 2차면접은 {second_interviewers}가 진행합니다.",
             "next_status": "2차면접통과 / 탈락",
         },
         "2차면접통과": {
