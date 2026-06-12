@@ -1045,32 +1045,101 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
         rows.sort(key=lambda r: r['status'])
 
     st.write("")
+
+    # ── 일괄 선택 처리: 체크박스 렌더 전에 pending action 적용
+    visible_ids = [r['_app']['id'] for r in rows]
+    pending_action = st.session_state.pop("_bulk_action", None)
+    if pending_action == "select_all":
+        for aid in visible_ids:
+            st.session_state[f"row_chk_{aid}"] = True
+    elif pending_action == "clear_all":
+        for aid in visible_ids:
+            st.session_state[f"row_chk_{aid}"] = False
+
+    # 현재 선택된 ID 집합 (필터된 visible 범위 내)
+    selected_ids = [aid for aid in visible_ids
+                    if st.session_state.get(f"row_chk_{aid}", False)]
+    n_selected = len(selected_ids)
+    n_visible = len(visible_ids)
+
+    # ── 일괄 선택/변경 툴바
+    with st.container(border=True):
+        tb = st.columns([1.2, 1.2, 2.2, 2.5, 1.5])
+        with tb[0]:
+            if st.button(f"☑ 전체 선택 ({n_visible})", use_container_width=True,
+                         key="bulk_select_all",
+                         disabled=(n_visible == 0 or n_selected == n_visible)):
+                st.session_state["_bulk_action"] = "select_all"
+                st.rerun()
+        with tb[1]:
+            if st.button("⬜ 전체 해제", use_container_width=True,
+                         key="bulk_clear_all", disabled=(n_selected == 0)):
+                st.session_state["_bulk_action"] = "clear_all"
+                st.rerun()
+        with tb[2]:
+            st.markdown(
+                f"<div style='padding-top:8px;color:#4B5563;'>"
+                f"선택: <b style='color:{PRIMARY};'>{n_selected}</b> / {n_visible}명"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with tb[3]:
+            bulk_new_status = st.selectbox(
+                "전형 일괄 변경",
+                STATUS_OPTIONS,
+                index=None,
+                placeholder="변경할 전형 선택...",
+                label_visibility="collapsed",
+                key="bulk_new_status",
+                disabled=(n_selected == 0),
+            )
+        with tb[4]:
+            apply_disabled = (n_selected == 0) or (not bulk_new_status)
+            if st.button(f"🔄 {n_selected}명 적용" if n_selected else "🔄 적용",
+                         type="primary", use_container_width=True,
+                         disabled=apply_disabled, key="bulk_apply"):
+                target_apps = [r['_app'] for r in rows if r['_app']['id'] in set(selected_ids)]
+                changed = _bulk_update_status(target_apps, bulk_new_status, statuses)
+                # 체크박스 초기화
+                for aid in visible_ids:
+                    st.session_state[f"row_chk_{aid}"] = False
+                if changed:
+                    st.toast(f"✅ {changed}명 전형을 '{bulk_new_status}'로 변경", icon="✅")
+                else:
+                    st.toast("변경된 항목 없음 (이미 동일 전형)", icon="ℹ️")
+                st.rerun()
+
     # 헤더
-    h = st.columns([0.6, 2, 1.5, 1.5, 4, 1])
-    h[0].markdown("**#**")
-    h[1].markdown("**이름**")
-    h[2].markdown("**매칭도**")
-    h[3].markdown("**상태**")
-    h[4].markdown("**한줄평**")
-    h[5].markdown("**상세**")
+    h = st.columns([0.4, 0.6, 2, 1.5, 1.5, 4, 1])
+    h[0].markdown("**☑**")
+    h[1].markdown("**#**")
+    h[2].markdown("**이름**")
+    h[3].markdown("**매칭도**")
+    h[4].markdown("**상태**")
+    h[5].markdown("**한줄평**")
+    h[6].markdown("**상세**")
     st.markdown("<hr style='margin:8px 0 12px 0;border:none;border-top:1px solid #EDECF1;'>",
                 unsafe_allow_html=True)
 
     for i, r in enumerate(rows, start=1):
-        c = st.columns([0.6, 2, 1.5, 1.5, 4, 1])
-        c[0].markdown(f"<div style='padding-top:8px;color:#8B8A95;'>{i}</div>", unsafe_allow_html=True)
-        c[1].markdown(f"<div style='padding-top:8px;font-weight:600;'>{r['name']}</div>",
+        aid = r['_app']['id']
+        c = st.columns([0.4, 0.6, 2, 1.5, 1.5, 4, 1])
+        with c[0]:
+            st.checkbox("선택", key=f"row_chk_{aid}",
+                        label_visibility="collapsed")
+        c[1].markdown(f"<div style='padding-top:8px;color:#8B8A95;'>{i}</div>", unsafe_allow_html=True)
+        c[2].markdown(f"<div style='padding-top:8px;font-weight:600;'>{r['name']}</div>",
                       unsafe_allow_html=True)
         if r['score'] >= 0:
-            c[2].markdown(
+            c[3].markdown(
                 f'<div style="padding-top:4px;"><span class="score-badge {score_class(r["score"])}">{r["score"]}점</span></div>',
                 unsafe_allow_html=True,
             )
         else:
-            c[2].markdown("<div style='padding-top:8px;color:#9CA3AF;'>—</div>",
+            c[3].markdown("<div style='padding-top:8px;color:#9CA3AF;'>—</div>",
                           unsafe_allow_html=True)
         color = STATUS_COLORS.get(r['status'], '#9CA3AF')
-        c[3].markdown(
+        c[4].markdown(
             f'<div style="padding-top:4px;"><span class="status-badge" style="background:{color}22;color:{color};border:1px solid {color}44;">{r["status"]}</span></div>',
             unsafe_allow_html=True,
         )
@@ -1079,12 +1148,40 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
             oneliner = '(분석 완료)'
         elif not r['_anl']:
             oneliner = '(미분석)'
-        c[4].markdown(f"<div style='padding-top:8px;color:#4B5563;font-size:0.9rem;'>{oneliner[:90]}</div>",
+        c[5].markdown(f"<div style='padding-top:8px;color:#4B5563;font-size:0.9rem;'>{oneliner[:90]}</div>",
                       unsafe_allow_html=True)
-        with c[5]:
-            if st.button("→", key=f"detail_{r['_app']['id']}", use_container_width=True):
-                st.session_state['selected_applicant_id'] = r['_app']['id']
+        with c[6]:
+            if st.button("→", key=f"detail_{aid}", use_container_width=True):
+                st.session_state['selected_applicant_id'] = aid
                 st.rerun()
+
+
+def _bulk_update_status(target_apps: list[dict], new_status: str,
+                       all_statuses: dict) -> int:
+    # 선택된 지원자 일괄 전형 변경. 동일 전형은 스킵. Slack 알림은 스팸 방지로 생략.
+    if not target_apps or not new_status:
+        return 0
+    now_min = datetime.now().isoformat(timespec='minutes')
+    now_sec = datetime.now().isoformat(timespec='seconds')
+    changed = 0
+    for app in target_apps:
+        st_data = all_statuses.get(app['id'], {})
+        prev_st = st_data.get('status') or '미검토'
+        if prev_st == new_status:
+            continue
+        notes = (st_data.get('notes') or '').strip()
+        auto_log = f"[{now_min}] {prev_st} → {new_status} (일괄)"
+        final_notes = f"{notes}\n{auto_log}" if notes else auto_log
+        all_statuses[app['id']] = {
+            'status': new_status,
+            'notes': final_notes,
+            'updated_at': now_sec,
+        }
+        changed += 1
+    if changed:
+        cache_store.save_statuses(get_shared_drive_id(), all_statuses)
+        load_cached_statuses.clear()
+    return changed
 
 
 def _bulk_analyze(pending: list[dict], jd_text: str, analyses: dict, ideal_profile: str = ""):
