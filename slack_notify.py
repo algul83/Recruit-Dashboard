@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from urllib.parse import quote
 
 import requests
@@ -59,6 +60,27 @@ def mention(name: str) -> str:
     """이름 → Slack 멘션 (`<@U...>`). ID 없으면 이름 그대로."""
     uid = _get_members().get(name)
     return f"<@{uid}>" if uid else f"*{name}*"
+
+
+def mentionize_names(text: str) -> str:
+    """문장 내 알려진 멤버 이름을 Slack 멘션 형태로 자동 치환.
+
+    UI에는 plain text("Furi, Y, Lina")로 표시하고 Slack 전송 직전에만 멘션화
+    하기 위한 유틸. 단어 경계는 한글/영문/숫자 인접 시 매칭 제외로 흉내.
+    이름 길이가 긴 것부터 처리해 substring 충돌(예: "Y"가 "Y · Lina"에서 두 번
+    매칭되는 문제) 방지.
+    """
+    members = _get_members()
+    if not members:
+        return text
+    for name in sorted(members.keys(), key=len, reverse=True):
+        uid = members[name]
+        if not uid:
+            continue
+        # 영문명은 인접 한글 조사("Lina가") 허용해야 하므로 boundary는 알파뉴메릭만 차단
+        pattern = re.compile(rf'(?<![A-Za-z0-9]){re.escape(name)}(?![A-Za-z0-9])')
+        text = pattern.sub(f'<@{uid}>', text)
+    return text
 
 
 def post_message(text: str, blocks: list | None = None) -> dict:
@@ -139,9 +161,11 @@ def notify_status_change(
     if applicant_id:
         url = applicant_link(position, applicant_id)
         link_line = f"\n🔗 <{url}|상세 보기>"
+    # action_text 안의 이름들(2차면접관 등)을 멘션으로 자동 치환
+    action_mentioned = mentionize_names(action_text)
     text = (
         f"📋 *{position} · {applicant_name}* — `{prev_status}` → `{new_status}`{decided}\n"
-        f"{score_str}다음: {mention(owner_name)} {action_text}"
+        f"{score_str}다음: {mention(owner_name)} {action_mentioned}"
         f"{link_line}"
     )
     return post_message(text)
