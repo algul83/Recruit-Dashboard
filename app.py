@@ -696,6 +696,9 @@ def load_cached_profiles():
 # ============== 분석 실행 ==============
 SHORT_TEXT_THRESHOLD = 200  # PDF 텍스트 추출 결과가 이보다 짧으면 vision으로 추가 전달
 MAX_VISION_ITEMS = 25  # 한 지원자당 vision 자료 개수 상한
+# 한 지원자당 vision 자료 총 raw 바이트 상한 — base64 인코딩 시 ~1.33배 부풀어
+# 25MB raw → ~33MB encoded. Anthropic API 요청 한도(약 32~36MB) 안에 들도록.
+MAX_TOTAL_VISION_BYTES = 25 * 1024 * 1024
 # 파일명에 이 키워드 포함 PDF는 텍스트 길이 무관 항상 vision으로도 전달
 # (디자이너 포트폴리오는 텍스트가 풍부해도 시각 평가가 필수)
 PORTFOLIO_KEYWORDS = ('포트폴리오', '포폴', 'portfolio', 'folio', 'ポートフォリオ')
@@ -795,6 +798,40 @@ def _collect_applicant_assets(files: list[dict]) -> tuple[dict, list[dict]]:
             _process_one(f['name'], blob)
         except Exception as e:
             documents[f['name']] = f"[다운로드 실패: {e}]"
+
+    # Vision 페이로드 총 바이트 예산 적용 — Anthropic API 413 방지
+    # 단일 vision item만 있으면 예산 초과해도 그대로 보냄 (시각 평가 우선)
+    # 여러 개면: 포트폴리오 우선, 같은 우선순위 내에선 작은 것부터 채워 최대 다양성 확보
+    total_vision_bytes = sum(len(v.get('data', b'')) for v in vision_items)
+    if len(vision_items) > 1 and total_vision_bytes > MAX_TOTAL_VISION_BYTES:
+        def _priority(v: dict) -> int:
+            # 0 = portfolio (높음), 1 = 일반
+            return 0 if _is_portfolio_filename(v.get('name', '')) else 1
+        sorted_items = sorted(vision_items,
+                              key=lambda v: (_priority(v), len(v.get('data', b''))))
+        kept: list[dict] = []
+        dropped: list[dict] = []
+        running = 0
+        for v in sorted_items:
+            sz = len(v.get('data', b''))
+            if running + sz <= MAX_TOTAL_VISION_BYTES:
+                kept.append(v)
+                running += sz
+            else:
+                dropped.append(v)
+        # 한 개도 못 담겼으면 최우선 1개는 강제 포함 (시각 평가 0개 회피)
+        if not kept and sorted_items:
+            kept = [sorted_items[0]]
+            dropped = sorted_items[1:]
+        vision_items = kept
+        if dropped:
+            dropped_names = ", ".join(f"{v.get('name', '?')} ({len(v.get('data', b''))/1024/1024:.1f}MB)"
+                                       for v in dropped)
+            documents["__vision_dropped__"] = (
+                f"[알림] API 페이로드 한도(약 25MB)로 인해 다음 vision 자료 "
+                f"{len(dropped)}건이 텍스트로만 전달됨: {dropped_names}. "
+                f"디자인 품질은 텍스트 기반으로 추정 평가."
+            )
 
     return documents, vision_items
 

@@ -261,11 +261,11 @@ def analyze_applicant(
     primary_model = FALLBACK_MODEL if has_vision else MODEL
     primary_max = 4000 if has_vision else 2500
 
-    def _try(model: str, max_tokens: int):
+    def _try(model: str, max_tokens: int, blocks: list[dict]):
         msg = client.messages.create(
             model=model, max_tokens=max_tokens,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": content_blocks}],
+            messages=[{"role": "user", "content": blocks}],
         )
         text = msg.content[0].text.strip()
         m = re.search(r'\{[\s\S]*\}', text)
@@ -276,13 +276,45 @@ def analyze_applicant(
         except json.JSONDecodeError as e:
             return None, text, msg, f"{e}"
 
-    data, raw_text, msg, err = _try(primary_model, primary_max)
+    # 413 RequestTooLargeError 대응: vision 자료를 큰 것부터 하나씩 떨궈가며 재시도
+    from anthropic import APIStatusError
+    def _try_with_413_retry(model: str, max_tokens: int, initial_blocks: list[dict]):
+        blocks = list(initial_blocks)
+        dropped_count = 0
+        last_exc: Exception | None = None
+        for attempt in range(4):  # 최대 4번 시도 (원본 + 3회 페이로드 축소)
+            try:
+                return _try(model, max_tokens, blocks) + (dropped_count,)
+            except APIStatusError as e:
+                last_exc = e
+                code = getattr(e, 'status_code', None)
+                if code != 413:
+                    raise
+                # vision PDF/image 블록 중 가장 큰 것 1개 제거
+                non_text_idx = [i for i, b in enumerate(blocks)
+                                if b.get('type') in ('document', 'image')]
+                if not non_text_idx:
+                    raise  # 더 떨굴 게 없음
+                largest_i = max(non_text_idx,
+                                key=lambda i: len(blocks[i].get('source', {}).get('data', '')))
+                blocks.pop(largest_i)
+                dropped_count += 1
+        # 모든 시도 실패
+        if last_exc:
+            raise last_exc
+        return None, "", None, "exhausted", dropped_count
+
+    try:
+        result_tuple = _try_with_413_retry(primary_model, primary_max, content_blocks)
+        data, raw_text, msg, err, vision_dropped = result_tuple
+    except APIStatusError as e:
+        return {"error": f"API 오류: {e}", "raw": str(e)}
     used_model = primary_model
 
     # haiku 실패 시 sonnet fallback (vision 없는 경우)
     if data is None and not has_vision:
         try:
-            data, raw_text, msg, err = _try(FALLBACK_MODEL, 4000)
+            data, raw_text, msg, err = _try(FALLBACK_MODEL, 4000, content_blocks)
             used_model = FALLBACK_MODEL if data else used_model
         except Exception as e:
             err = f"sonnet 재시도도 실패: {e}"
@@ -292,5 +324,7 @@ def analyze_applicant(
 
     data["_model"] = used_model
     data["_tokens"] = {"input": msg.usage.input_tokens, "output": msg.usage.output_tokens}
-    data["_vision_count"] = len(vision_items) if vision_items else 0
+    data["_vision_count"] = (len(vision_items) - vision_dropped) if vision_items else 0
+    if vision_dropped:
+        data["_vision_dropped_413"] = vision_dropped
     return data
