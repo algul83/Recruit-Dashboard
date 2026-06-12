@@ -31,10 +31,40 @@ IMAGE_MIME = {
 }
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB (Anthropic 제한)
 MAX_PDF_SIZE = 32 * 1024 * 1024   # 32 MB (Anthropic 제한)
+# Anthropic 이미지 차원 한도 — 단일 8000×8000, 다수 1568×1568 권장
+# 한 변이 너무 길면 (배너 등) 자동 축소
+MAX_IMAGE_DIM = 7500   # 한 변 최대 px
+TARGET_LONG_EDGE = 2000  # 축소 시 긴 변 목표 px
 
 
 def is_image_filename(name: str) -> bool:
     return name.lower().endswith(IMAGE_EXTS)
+
+
+def normalize_image(data: bytes, media_type: str) -> tuple[bytes, str] | None:
+    """이미지가 Anthropic 차원 한도 초과면 PIL로 축소. 정상이면 원본 그대로.
+
+    Returns: (data, media_type) 또는 None (불러올 수 없는 이미지)
+    """
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(data))
+        w, h = img.size
+        max_dim = max(w, h)
+        if max_dim <= MAX_IMAGE_DIM:
+            return data, media_type
+        # 비율 유지하며 긴 변을 TARGET_LONG_EDGE로 축소
+        scale = TARGET_LONG_EDGE / max_dim
+        new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
+        img = img.convert("RGB") if img.mode in ("P", "RGBA", "LA") else img
+        img = img.resize(new_size, Image.LANCZOS)
+        buf = io.BytesIO()
+        # png는 무손실 + 큼 → jpeg로 통일해 사이즈 축소
+        img.save(buf, format="JPEG", quality=85, optimize=True)
+        return buf.getvalue(), "image/jpeg"
+    except Exception:
+        return None
 
 
 def image_media_type(name: str) -> str:

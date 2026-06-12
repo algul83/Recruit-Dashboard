@@ -763,10 +763,15 @@ def _collect_applicant_assets(files: list[dict]) -> tuple[dict, list[dict]]:
                 _fetch_inline_urls(text, display_name, documents, vision_items)
         elif extractors.is_image_filename(fname):
             if len(data) <= extractors.MAX_IMAGE_SIZE:
-                vision_items.append({
-                    'type': 'image', 'data': data, 'name': display_name,
-                    'media_type': extractors.image_media_type(fname),
-                })
+                # 차원 검증 + 필요 시 축소 (Anthropic 차원 한도 초과 방지)
+                media = extractors.image_media_type(fname)
+                normalized = extractors.normalize_image(data, media)
+                if normalized:
+                    norm_data, norm_media = normalized
+                    vision_items.append({
+                        'type': 'image', 'data': norm_data, 'name': display_name,
+                        'media_type': norm_media,
+                    })
         elif fname_lower.endswith('.zip'):
             inner_items = extractors.extract_zip(data)
             for it in inner_items:
