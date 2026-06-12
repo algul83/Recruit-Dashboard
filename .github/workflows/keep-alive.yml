@@ -15,12 +15,14 @@ jobs:
         run: |
           URL="https://onesglobal-recruit.streamlit.app"
           echo "Pinging $URL"
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -L --max-time 60 "$URL")
+          # 리다이렉트 추적 안 함: 인증벽 있는 앱은 303 → auth 페이지 → 무한 루프 발생.
+          # Streamlit 엣지에 요청이 닿는 것 자체가 traffic 카운트라 303만 받아도 sleep 방지 OK.
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL")
           echo "HTTP $HTTP_CODE"
-          # 2xx/3xx 응답이면 성공, 그 외는 실패
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
-            echo "✅ App is awake"
+          # 1xx~3xx 응답이면 엣지 도달 성공
+          if [ "$HTTP_CODE" -ge 100 ] && [ "$HTTP_CODE" -lt 400 ]; then
+            echo "✅ Ping reached Streamlit edge — sleep timer reset"
           else
-            echo "❌ Unexpected response"
+            echo "❌ Unexpected response: $HTTP_CODE"
             exit 1
           fi
