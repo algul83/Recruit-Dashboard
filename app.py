@@ -996,13 +996,19 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
 
     st.write("")
 
-    # 미분석 / 전체 재분석
-    pending = [a for a in applicants if a['id'] not in analyses]
+    # 미분석 / 전체 재분석 — 탈락자는 분석 대상에서 제외
+    non_rejected = [a for a in applicants
+                    if statuses.get(a['id'], {}).get('status') != '탈락']
+    rejected_count = len(applicants) - len(non_rejected)
+    pending = [a for a in non_rejected if a['id'] not in analyses]
     cols = st.columns([3, 1, 1])
     if pending:
         with cols[0]:
-            st.info(f"📌 미분석 지원자 **{len(pending)}명** 있습니다. "
-                    f"AI 분석을 실행하면 매칭도와 핵심역량을 확인할 수 있습니다.")
+            msg = (f"📌 미분석 지원자 **{len(pending)}명** 있습니다. "
+                   f"AI 분석을 실행하면 매칭도와 핵심역량을 확인할 수 있습니다.")
+            if rejected_count:
+                msg += f"  *(탈락 {rejected_count}명 제외)*"
+            st.info(msg)
         with cols[1]:
             if st.button(f"🚀 미분석 {len(pending)}명 분석",
                          use_container_width=True, type="primary",
@@ -1011,14 +1017,18 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
                 st.rerun()
     else:
         with cols[0]:
-            st.success(f"✅ {len(applicants)}명 모두 분석 완료. "
-                       f"인재상이나 JD가 변경되었으면 전체 재분석으로 갱신할 수 있습니다.")
+            msg = f"✅ {len(non_rejected)}명 모두 분석 완료. " \
+                  f"인재상이나 JD가 변경되었으면 전체 재분석으로 갱신할 수 있습니다."
+            if rejected_count:
+                msg += f"  *(탈락 {rejected_count}명 제외)*"
+            st.success(msg)
     with cols[2]:
-        if st.button(f"🔄 전체 재분석 ({len(applicants)}명)",
+        help_txt = "인재상/JD 변경 후 탈락자를 제외한 모든 지원자를 새로 분석합니다."
+        if st.button(f"🔄 전체 재분석 ({len(non_rejected)}명)",
                      use_container_width=True,
-                     help="인재상/JD 변경 후 모든 지원자를 새로 분석합니다.",
+                     help=help_txt,
                      key="btn_reanalyze_all"):
-            _bulk_analyze(applicants, jd_text, analyses, ideal_profile)
+            _bulk_analyze(non_rejected, jd_text, analyses, ideal_profile)
             st.rerun()
 
     # 정렬·필터
