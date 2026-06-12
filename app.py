@@ -696,6 +696,14 @@ def load_cached_profiles():
 # ============== 분석 실행 ==============
 SHORT_TEXT_THRESHOLD = 200  # PDF 텍스트 추출 결과가 이보다 짧으면 vision으로 추가 전달
 MAX_VISION_ITEMS = 25  # 한 지원자당 vision 자료 개수 상한
+# 파일명에 이 키워드 포함 PDF는 텍스트 길이 무관 항상 vision으로도 전달
+# (디자이너 포트폴리오는 텍스트가 풍부해도 시각 평가가 필수)
+PORTFOLIO_KEYWORDS = ('포트폴리오', '포폴', 'portfolio', 'folio', 'ポートフォリオ')
+
+
+def _is_portfolio_filename(name: str) -> bool:
+    nlow = name.lower()
+    return any(kw.lower() in nlow for kw in PORTFOLIO_KEYWORDS)
 
 
 def _collect_applicant_assets(files: list[dict]) -> tuple[dict, list[dict]]:
@@ -717,16 +725,28 @@ def _collect_applicant_assets(files: list[dict]) -> tuple[dict, list[dict]]:
 
         if fname_lower.endswith('.pdf'):
             text = extractors.extract_pdf(data)
-            if text and not text.startswith('[') and len(text) >= SHORT_TEXT_THRESHOLD:
+            has_text = bool(text and not text.startswith('['))
+            is_portfolio = _is_portfolio_filename(fname)
+            if has_text and len(text) >= SHORT_TEXT_THRESHOLD:
                 documents[display_name] = text
+                # 포트폴리오 키워드 있으면 텍스트 풍부해도 vision으로도 함께 전달
+                # (디자이너 포트폴리오는 PDF 라벨이 텍스트로 추출되지만 시각 평가 필수)
+                if is_portfolio and len(data) <= extractors.MAX_PDF_SIZE:
+                    vision_items.append({'type': 'pdf', 'data': data, 'name': display_name})
             else:
                 # 텍스트 짧음 → vision (PDF document block)으로 전달
                 if len(data) <= extractors.MAX_PDF_SIZE:
                     vision_items.append({'type': 'pdf', 'data': data, 'name': display_name})
-                if text and not text.startswith('['):
+                if has_text:
                     documents[display_name] = text  # 짧아도 있으면 함께
+            # 32MB 초과로 vision 전달 못한 포트폴리오는 Claude에게 알림
+            if is_portfolio and len(data) > extractors.MAX_PDF_SIZE:
+                size_mb = len(data) / 1024 / 1024
+                note = (f"[알림] 이 포트폴리오 PDF는 {size_mb:.1f}MB로 vision 전달 한계(32MB)를 "
+                        f"초과해 텍스트만 전달됨. 디자인 품질 평가 시 텍스트 기반으로 추정 평가.")
+                documents[display_name] = note + ("\n\n" + text if has_text else "")
             # PDF 텍스트에서 URL 추출 → 자동 fetch (포트폴리오 링크 등)
-            if text and not text.startswith('['):
+            if has_text:
                 _fetch_inline_urls(text, display_name, documents, vision_items)
         elif fname_lower.endswith('.pptx'):
             text = extractors.extract_pptx(data)
@@ -1498,44 +1518,163 @@ def load_hired_examples(position: str, _drive_id: str) -> list[dict]:
     return result
 
 
+# 인재상 학습 입력으로 쓸 전형 단계 분류
+POSITIVE_STAGES = ("서류통과", "1차면접통과", "2차면접통과", "최종합격")
+NEGATIVE_STAGES = ("탈락",)
+
+
+def _extract_applicant_documents(applicant: dict) -> dict[str, str]:
+    """지원자 파일들에서 텍스트만 추출 (인재상 학습용 — vision 미사용).
+
+    학습 페이로드는 다수 지원자 자료를 합쳐 보내므로 vision 사용 시 즉시 size limit 초과.
+    텍스트 기반으로만 패턴 추출.
+    """
+    docs: dict[str, str] = {}
+    for f in applicant.get('files', []):
+        fname = f['name']
+        if not fname.endswith(('.pdf', '.pptx', '.html')):
+            continue
+        try:
+            data = data_loader.download_file(f['id'])
+            text = extractors.extract_any(fname, data)
+            if text and not text.startswith('['):
+                docs[fname] = text
+        except Exception:
+            continue
+    return docs
+
+
+@st.cache_data(ttl=600, show_spinner="전형 진출자 자료 로드 중...")
+def load_stage_examples(position: str, _drive_id: str
+                        ) -> tuple[list[dict], list[dict]]:
+    """현재 status가 POSITIVE_STAGES인 지원자 + NEGATIVE_STAGES 지원자 자료 로드.
+
+    Returns: (positive_examples, negative_examples) — 각 [{name, documents}]
+    """
+    # 포지션 폴더 → 지원자 list (drive)
+    positions_map = data_loader.list_position_folders(_drive_id)
+    pos_id = positions_map.get(position)
+    if not pos_id:
+        return [], []
+    drive_apps = data_loader.list_applicants(pos_id, position)
+    statuses = cache_store.load_statuses(_drive_id)
+
+    pos_list: list[dict] = []
+    neg_list: list[dict] = []
+    for a in drive_apps:
+        st_data = statuses.get(a.id, {})
+        status = st_data.get('status', '')
+        if status not in POSITIVE_STAGES + NEGATIVE_STAGES:
+            continue
+        files_dicts = [{'id': f.id, 'name': f.name} for f in a.files]
+        docs = _extract_applicant_documents({'files': files_dicts})
+        if not docs:
+            continue
+        entry = {'id': a.id, 'name': a.name, 'documents': docs, '_status': status}
+        if status in POSITIVE_STAGES:
+            pos_list.append(entry)
+        else:
+            neg_list.append(entry)
+    return pos_list, neg_list
+
+
 def page_learn_profile(position: str, jd_text: str, profiles: dict[str, str]):
-    """인재상 자동 학습 — 백그라운드 처리, 결과는 인재상 관리에 자동 저장."""
+    """인재상 자동 학습 — _hired_examples 폴더 + 전형 변경된 지원자 합쳐서 학습.
+
+    POSITIVE: 서류통과/1차면접통과/2차면접통과/최종합격 + 수동 큐레이션 합격자 폴더
+    NEGATIVE: 탈락
+    """
     st.markdown(f"## 🧠 {position} 인재상 자동 학습")
+    st.caption("`_hired_examples` 폴더 + 전형 진출 지원자 + 탈락자(반례) 자료를 종합 분석합니다.")
     st.write("")
 
     if not jd_text:
         st.warning("이 포지션의 JD가 설정되지 않아 학습 불가합니다.")
         return
 
+    drive_id = get_shared_drive_id()
     try:
-        examples = load_hired_examples(position, get_shared_drive_id())
+        folder_examples = load_hired_examples(position, drive_id)  # 기존 폴더 POSITIVE
+        stage_pos, stage_neg = load_stage_examples(position, drive_id)
     except Exception as e:
         st.error(f"학습 자료 로드 실패: {e}")
         return
 
-    if not examples:
-        st.info("학습할 자료가 없습니다.")
+    # 폴더 합격자 + 전형 진출자 합치되 동일 id 중복 제거
+    seen_ids: set[str] = set()
+    positive_examples: list[dict] = []
+    for src in (folder_examples, stage_pos):
+        for ex in src:
+            if ex['id'] in seen_ids:
+                continue
+            seen_ids.add(ex['id'])
+            positive_examples.append(ex)
+    negative_examples = stage_neg
+
+    # 자료 미리보기 (단계별 카운트)
+    stage_counter: dict[str, int] = {"_hired 폴더": len(folder_examples)}
+    for ex in stage_pos:
+        s = ex.get('_status', '?')
+        stage_counter[s] = stage_counter.get(s, 0) + 1
+    for ex in stage_neg:
+        s = ex.get('_status', '?')
+        stage_counter[s] = stage_counter.get(s, 0) + 1
+
+    kpi = st.columns(4)
+    kpi[0].markdown(
+        f"<div class='kpi-box'><div class='kpi-label'>POSITIVE</div>"
+        f"<div class='kpi-value'>{len(positive_examples)}명</div></div>",
+        unsafe_allow_html=True)
+    kpi[1].markdown(
+        f"<div class='kpi-box'><div class='kpi-label'>NEGATIVE (탈락)</div>"
+        f"<div class='kpi-value'>{len(negative_examples)}명</div></div>",
+        unsafe_allow_html=True)
+    kpi[2].markdown(
+        f"<div class='kpi-box'><div class='kpi-label'>_hired 폴더</div>"
+        f"<div class='kpi-value'>{len(folder_examples)}명</div></div>",
+        unsafe_allow_html=True)
+    kpi[3].markdown(
+        f"<div class='kpi-box'><div class='kpi-label'>전형 진출자</div>"
+        f"<div class='kpi-value'>{len(stage_pos)}명</div></div>",
+        unsafe_allow_html=True)
+
+    st.write("")
+    with st.expander("📋 단계별 분포", expanded=False):
+        for stage, n in sorted(stage_counter.items()):
+            st.markdown(f"- **{stage}**: {n}명")
+
+    if not positive_examples and not negative_examples:
+        st.info("학습할 자료가 없습니다. 지원자 전형을 변경하거나 `_hired_examples` 폴더에 자료를 추가하세요.")
         return
 
-    # 학습 버튼만 노출
+    st.write("")
     cols = st.columns([2, 1])
     with cols[1]:
         if st.button("🚀 인재상 학습 실행", type="primary", use_container_width=True,
-                     key=f"learn_btn_{position}"):
-            with st.spinner("분석 중... (약 30초)"):
-                result = analyzer.learn_ideal_profile(jd_text, examples)
+                     key=f"learn_btn_{position}",
+                     disabled=(not positive_examples)):
+            with st.spinner(f"분석 중... POSITIVE {len(positive_examples)}명 · "
+                            f"NEGATIVE {len(negative_examples)}명 (약 1~2분)"):
+                result = analyzer.learn_ideal_profile(
+                    jd_text, positive_examples,
+                    negative_examples=negative_examples,
+                )
             if 'error' in result:
                 st.error(f"학습 실패: {result['error']}")
                 return
             profiles[position] = result.get('인재상_요약', '')
-            cache_store.save_profiles(get_shared_drive_id(), profiles)
+            cache_store.save_profiles(drive_id, profiles)
             load_cached_profiles.clear()
             st.session_state[f'learned_at_{position}'] = datetime.now().isoformat(timespec='seconds')
             st.success(
-                f"✅ 학습 완료. `{position}` 인재상에 자동 반영되었습니다. "
+                f"✅ 학습 완료. POSITIVE {result.get('_positive_count', 0)}명 + "
+                f"NEGATIVE {result.get('_negative_count', 0)}명 분석. "
                 f"내용은 사이드바 **🎯 인재상 관리**에서 확인·편집하세요."
             )
             st.rerun()
+
+    if not positive_examples:
+        st.warning("POSITIVE 자료가 없습니다 — 학습 실행 불가. 지원자 전형을 변경해주세요.")
 
     last = st.session_state.get(f'learned_at_{position}')
     if last:
