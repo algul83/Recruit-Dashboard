@@ -1,0 +1,9 @@
+[theme]
+# OS 다크모드 / Streamlit Settings 토글과 무관하게 항상 라이트 모드.
+# 인라인 CSS 색상이 다크 배경에서 묻히는 문제 방지.
+base = "light"
+primaryColor = "#5B43C9"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F1EEFB"
+textColor = "#1F1E29"
+font = "sans serif"
