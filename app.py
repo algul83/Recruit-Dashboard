@@ -443,6 +443,14 @@ PROCESS_FLOW = {
         "2차면접_연락": "Owen",
         "최종연락_연봉협상": "Lina",
     },
+    "약사": {
+        "서류검토자": "Y · Ryan · Eden",
+        "1차면접관": "Y · Ryan · Eden",
+        "2차면접관": "Furi · Y · Lina",
+        "1차면접_연락": "Owen",
+        "2차면접_연락": "Owen",
+        "최종연락_연봉협상": "Lina",
+    },
 }
 
 
@@ -954,6 +962,11 @@ def page_home(positions_map: dict, all_applicants: dict,
             "icon": "📱", "team": "Tech팀", "reviewer": "Furi",
             "color": "#0EA5E9", "color_light": "#BAE6FD", "color_bg": "#F0F9FF",
             "notion": "https://onesglobal.notion.site/58160581c1ed43b7b50abdc86838c683",
+        },
+        "약사": {
+            "icon": "💊", "team": "Data팀", "reviewer": "Y",
+            "color": "#059669", "color_light": "#A7F3D0", "color_bg": "#ECFDF5",
+            "notion": "https://www.notion.so/3873a7334743818a9651c51e13a15f6e",
         },
     }
     DEFAULT_THEME = {
@@ -1798,6 +1811,7 @@ NOTION_JD_URLS = {
     "Project Leader": "https://www.notion.so/b462514264984e968434391940ca4349",
     "웹디자이너": "https://www.notion.so/9e32e8cc780045099990c0fd27f39b2b",
     "iOS 개발자": "https://onesglobal.notion.site/58160581c1ed43b7b50abdc86838c683",
+    "약사": "https://www.notion.so/3873a7334743818a9651c51e13a15f6e",
 }
 
 
