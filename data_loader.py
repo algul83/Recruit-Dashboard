@@ -3,12 +3,17 @@ from __future__ import annotations
 
 import io
 import os
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+
+_RESUME_SUFFIX_RE = re.compile(
+    r'[\s_\-]*(이력서|입사지원서|지원서|CV|cv|Resume|resume)\s*$'
+)
 
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
@@ -95,12 +100,13 @@ def list_position_folders(shared_drive_id: str) -> dict[str, str]:
 def list_applicants(position_folder_id: str, position_name: str) -> list[Applicant]:
     """포지션 폴더 안 지원자 목록 + 각 지원자의 파일 목록.
 
-    최적화: 지원자별 파일을 N번 API 호출 대신, parents OR query로 청크당 1회 호출.
-    50명이면 N+1번 → 2~3번 호출로 단축 (약 25초 → 1~2초).
+    두 가지 구조 모두 지원:
+      - 사람인: 포지션 > 지원자 폴더 > 파일들
+      - 잡코리아: 포지션 > 지원자 PDF 파일 (폴더 없이 단일 파일)
     """
     drive = _drive_client()
 
-    # 1. 지원자 폴더 목록
+    # 1. 지원자 폴더 목록 (사람인 구조)
     applicants: list[Applicant] = []
     page_token = None
     while True:
@@ -117,21 +123,53 @@ def list_applicants(position_folder_id: str, position_name: str) -> list[Applica
         if not page_token:
             break
 
-    if not applicants:
-        return applicants
-
-    # 2. 각 지원자 파일을 ThreadPoolExecutor로 병렬 호출
+    # 2. 폴더형 지원자 파일을 ThreadPoolExecutor로 병렬 호출
     # httplib2 transport는 thread-safe 아님 → 각 worker가 자기 client 사용
-    from concurrent.futures import ThreadPoolExecutor
+    if applicants:
+        from concurrent.futures import ThreadPoolExecutor
 
-    def _fetch_one(app: Applicant):
-        local_drive = _drive_client()
-        app.files = _list_files(local_drive, app.id)
-        return app
+        def _fetch_one(app: Applicant):
+            local_drive = _drive_client()
+            app.files = _list_files(local_drive, app.id)
+            return app
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        applicants = list(ex.map(_fetch_one, applicants))
+        with ThreadPoolExecutor(max_workers=10) as ex:
+            applicants = list(ex.map(_fetch_one, applicants))
+
+    # 3. 포지션 폴더 바로 아래 PDF 파일 (잡코리아 구조)
+    page_token = None
+    while True:
+        r = drive.files().list(
+            q=f"'{position_folder_id}' in parents and trashed=false "
+              f"and mimeType='application/pdf'",
+            fields="nextPageToken, files(id,name,mimeType,size)",
+            includeItemsFromAllDrives=True, supportsAllDrives=True,
+            pageSize=200, pageToken=page_token,
+        ).execute()
+        for f in r.get('files', []):
+            applicants.append(Applicant(
+                id=f['id'],
+                name=_applicant_name_from_filename(f['name']),
+                position=position_name,
+                files=[ApplicantFile(
+                    id=f['id'], name=f['name'],
+                    mime_type=f['mimeType'], size=int(f.get('size', 0)),
+                )],
+            ))
+        page_token = r.get('nextPageToken')
+        if not page_token:
+            break
+
     return applicants
+
+
+def _applicant_name_from_filename(filename: str) -> str:
+    """잡코리아 PDF 파일명에서 지원자 이름 추출. 예: '홍길동_이력서.pdf' → '홍길동'."""
+    stem = filename.rsplit('.', 1)[0]
+    stem = _RESUME_SUFFIX_RE.sub('', stem).strip()
+    if stem.endswith('님'):
+        stem = stem[:-1].strip()
+    return stem or filename
 
 
 def _list_files(drive, folder_id: str) -> list[ApplicantFile]:
