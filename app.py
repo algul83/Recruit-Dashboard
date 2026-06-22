@@ -974,8 +974,13 @@ def page_home(positions_map: dict, all_applicants: dict,
         "color": PRIMARY, "color_light": "#EDE9FE", "color_bg": "#F5F3FF", "notion": "",
     }
 
-    pos_cols = st.columns(len(positions_map))
-    for col, (position, _) in zip(pos_cols, positions_map.items()):
+    # 한 줄에 최대 3개 카드 — 4개 이상이면 다음 줄로 자동 줄바꿈
+    COLS_PER_ROW = 3
+    pos_cols = None
+    for i, (position, _) in enumerate(positions_map.items()):
+        if i % COLS_PER_ROW == 0:
+            pos_cols = st.columns(COLS_PER_ROW)
+        col = pos_cols[i % COLS_PER_ROW]
         apps = all_applicants.get(position, [])
         threshold = slack_notify.threshold_for(position)
         t = POSITION_THEMES.get(position, DEFAULT_THEME)
