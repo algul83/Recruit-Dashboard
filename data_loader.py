@@ -164,12 +164,21 @@ def list_applicants(position_folder_id: str, position_name: str) -> list[Applica
 
 
 def _applicant_name_from_filename(filename: str) -> str:
-    """잡코리아 PDF 파일명에서 지원자 이름 추출. 예: '홍길동_이력서.pdf' → '홍길동'."""
+    """잡코리아 PDF 파일명에서 지원자 이름 추출.
+
+    잡코리아 형식: '포지션_이름_날짜_코드.pdf' → '이름'
+    fallback: 이력서/입사지원서 접미사 제거
+    """
     stem = filename.rsplit('.', 1)[0]
-    stem = _RESUME_SUFFIX_RE.sub('', stem).strip()
-    if stem.endswith('님'):
-        stem = stem[:-1].strip()
-    return stem or filename
+    parts = stem.split('_')
+    # 잡코리아: 4토막 이상이면 두 번째가 이름
+    if len(parts) >= 4:
+        return parts[1].strip() or filename
+    # fallback: 접미사 제거
+    stripped = _RESUME_SUFFIX_RE.sub('', stem).strip()
+    if stripped.endswith('님'):
+        stripped = stripped[:-1].strip()
+    return stripped or filename
 
 
 def _list_files(drive, folder_id: str) -> list[ApplicantFile]:
