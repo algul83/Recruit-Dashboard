@@ -125,9 +125,12 @@ def fetch_url_content(url: str) -> dict | None:
         content = bytes(buf)
 
         if 'pdf' in ct or name.lower().endswith('.pdf'):
-            if len(content) > MAX_PDF_SIZE:
-                return None
-            return {'type': 'pdf', 'data': content, 'name': f"URL→{name[:60]}"}
+            # 잘린 URL/만료 링크에서 서버가 200 + HTML 에러 페이지를 반환하는 케이스 방지:
+            # magic bytes로 실제 PDF인지 확인 (PDF 아니면 HTML 분기로 fallthrough)
+            if content[:5] == b'%PDF-':
+                if len(content) > MAX_PDF_SIZE:
+                    return None
+                return {'type': 'pdf', 'data': content, 'name': f"URL→{name[:60]}"}
         if 'image/' in ct:
             if len(content) > MAX_IMAGE_SIZE:
                 return None
