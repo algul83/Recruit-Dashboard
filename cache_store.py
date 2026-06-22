@@ -107,6 +107,119 @@ def merged_profile_for(position: str, profiles: dict[str, str]) -> str:
     return "\n\n".join(parts)
 
 
+def _ensure_hired_position_folder(shared_drive_id: str, position: str) -> str:
+    """_hired_examples/{position}/ 폴더 보장 (없으면 생성). 폴더 ID 반환."""
+    drive = data_loader._drive_client()
+    # _hired_examples
+    r = drive.files().list(
+        q=f"'{shared_drive_id}' in parents and name='{HIRED_FOLDER_NAME}' "
+          f"and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        fields="files(id)",
+        corpora='drive', driveId=shared_drive_id,
+        includeItemsFromAllDrives=True, supportsAllDrives=True,
+    ).execute()
+    if r.get('files'):
+        hired_root = r['files'][0]['id']
+    else:
+        hired_root = drive.files().create(
+            body={
+                'name': HIRED_FOLDER_NAME, 'parents': [shared_drive_id],
+                'mimeType': 'application/vnd.google-apps.folder',
+            },
+            fields='id', supportsAllDrives=True,
+        ).execute()['id']
+    # {position}
+    r = drive.files().list(
+        q=f"'{hired_root}' in parents and name='{position}' "
+          f"and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        fields="files(id)",
+        includeItemsFromAllDrives=True, supportsAllDrives=True,
+    ).execute()
+    if r.get('files'):
+        return r['files'][0]['id']
+    return drive.files().create(
+        body={
+            'name': position, 'parents': [hired_root],
+            'mimeType': 'application/vnd.google-apps.folder',
+        },
+        fields='id', supportsAllDrives=True,
+    ).execute()['id']
+
+
+def close_position(
+    shared_drive_id: str, position_name: str, position_folder_id: str,
+) -> dict:
+    """포지션 채용 종료 처리.
+
+    1. 최종합격자 폴더/파일을 _hired_examples/{position}/ 로 복사 (학습용 보존)
+    2. 포지션 폴더명에 `_` prefix 추가 → list_position_folders가 자동 제외 → UI에서 사라짐
+    3. secrets.toml의 [positions] URL 제거는 GitHub Secret 수동 갱신 필요 (반환값에 안내)
+
+    Returns: {hired: [{name, copied_files}], renamed: '_{position}', warning: '...'}
+    """
+    drive = data_loader._drive_client()
+    statuses = load_statuses(shared_drive_id)
+    applicants = data_loader.list_applicants(position_folder_id, position_name)
+
+    # 1) 최종합격자 식별
+    hired_apps = [
+        a for a in applicants
+        if statuses.get(a.id, {}).get('status') == '최종합격'
+    ]
+
+    # 2) _hired_examples/{position}/ 준비
+    hired_pos_folder = _ensure_hired_position_folder(shared_drive_id, position_name)
+
+    # 3) 합격자별 폴더 만들고 파일 복사
+    copied_summary = []
+    for app in hired_apps:
+        # 동명이인 폴더 있으면 skip (중복 복사 방지)
+        existing = drive.files().list(
+            q=f"'{hired_pos_folder}' in parents and name='{app.name}' "
+              f"and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            fields="files(id)",
+            includeItemsFromAllDrives=True, supportsAllDrives=True,
+        ).execute()
+        if existing.get('files'):
+            copied_summary.append({'name': app.name, 'copied_files': [], 'note': '이미 존재 (건너뜀)'})
+            continue
+        new_folder = drive.files().create(
+            body={
+                'name': app.name, 'parents': [hired_pos_folder],
+                'mimeType': 'application/vnd.google-apps.folder',
+            },
+            fields='id', supportsAllDrives=True,
+        ).execute()
+        copied_files = []
+        for f in app.files:
+            drive.files().copy(
+                fileId=f.id,
+                body={'name': f.name, 'parents': [new_folder['id']]},
+                supportsAllDrives=True,
+            ).execute()
+            copied_files.append(f.name)
+        copied_summary.append({'name': app.name, 'copied_files': copied_files})
+
+    # 4) 포지션 폴더명에 `_` prefix 추가 (이미 있으면 skip)
+    new_name = position_name if position_name.startswith('_') else f"_{position_name}"
+    if new_name != position_name:
+        drive.files().update(
+            fileId=position_folder_id,
+            body={'name': new_name},
+            supportsAllDrives=True,
+        ).execute()
+
+    return {
+        'hired': copied_summary,
+        'renamed': new_name,
+        'warning': (
+            f"secrets.toml의 [positions]에서 '{position_name}' 줄을 제거하고 "
+            f"GitHub Secret도 동일하게 갱신해주세요. "
+            f"(JD 텍스트는 [position_jd_text]에 보존하셔도 됩니다.)"
+        ),
+    }
+
+
 def list_hired_examples(shared_drive_id: str, position: str) -> list[dict]:
     """_hired_examples/{position}/ 안의 합격자 폴더 목록 + 각 폴더의 파일 list 반환.
 

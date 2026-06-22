@@ -1805,6 +1805,65 @@ def page_jd(jd_text: str, position: str):
                 )
         st.markdown(jd_text if jd_text.strip() else "_채용공고 내용이 등록되지 않았습니다._")
 
+    _close_position_section(position)
+
+
+def _close_position_section(position: str):
+    """채용 종료 처리 UI — JD 페이지 하단 expander."""
+    with st.expander("🔒 채용 종료 처리", expanded=False):
+        st.caption(
+            "최종합격자 자료를 `_hired_examples/{포지션}/`로 보존하고, "
+            "포지션 폴더명에 `_` prefix를 붙여 대시보드에서 숨깁니다. "
+            "**되돌리려면 Drive에서 폴더명을 원복**해야 합니다."
+        )
+        shared = get_shared_drive_id()
+        positions_map = data_loader.list_position_folders(shared)
+        pos_id = positions_map.get(position)
+        if not pos_id:
+            st.warning("이미 종료된 포지션입니다 (포지션 폴더가 활성 목록에 없음).")
+            return
+
+        # 최종합격자 미리보기
+        statuses = cache_store.load_statuses(shared)
+        applicants_dicts = load_applicants_for_position(position, pos_id)
+        hired = [
+            a for a in applicants_dicts
+            if statuses.get(a['id'], {}).get('status') == '최종합격'
+        ]
+        if hired:
+            st.markdown(f"**최종합격자 {len(hired)}명** (학습 데이터로 보존됨):")
+            for h in hired:
+                files = ", ".join(f['name'] for f in h.get('files', []))
+                st.markdown(f"- **{h['name']}** — {files or '_파일 없음_'}")
+        else:
+            st.info("'최종합격' 상태인 지원자가 없습니다. 그래도 종료할 수 있지만 학습 데이터는 추가되지 않습니다.")
+
+        confirm = st.checkbox(
+            f"'{position}' 포지션을 종료합니다. 위 합격자 자료가 `_hired_examples/{position}/`로 복사되고 "
+            f"포지션 폴더가 `_{position}`으로 변경됩니다.",
+            key=f"close_confirm_{position}",
+        )
+        if st.button("🔒 채용 종료 실행", type="primary", disabled=not confirm, key=f"close_btn_{position}"):
+            with st.spinner("종료 처리 중..."):
+                try:
+                    result = cache_store.close_position(shared, position, pos_id)
+                except Exception as e:
+                    st.error(f"실패: {e}")
+                    return
+            st.success(f"✅ 채용 종료 완료 — Drive 폴더: `{result['renamed']}`")
+            if result['hired']:
+                st.markdown("**보존된 합격자:**")
+                for h in result['hired']:
+                    note = f" _({h['note']})_" if h.get('note') else ""
+                    files_str = ", ".join(h['copied_files']) or "_(파일 없음)_"
+                    st.markdown(f"- {h['name']} — {files_str}{note}")
+            st.warning(f"⚠️ {result['warning']}")
+            # 캐시 무효화
+            load_positions.clear()
+            load_applicants_for_position.clear()
+            data_loader.list_position_folders.cache_clear()
+            st.info("페이지를 새로고침하면 활성 포지션 목록에서 사라집니다.")
+
 
 def page_profiles(current_position: str, all_positions: list[str], profiles: dict[str, str]):
     """회사 인재상 관리 — 공통 + 포지션별 자유 텍스트 편집."""
