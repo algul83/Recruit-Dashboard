@@ -50,6 +50,7 @@ class Applicant:
     name: str        # 지원자 이름 (폴더명)
     position: str    # 포지션 (상위 폴더명)
     files: list[ApplicantFile] = field(default_factory=list)
+    applied_at: str = ""  # Drive 폴더/파일 createdTime (ISO 8601). 지원 접수 시점 근사값
 
     @property
     def resume_file(self) -> ApplicantFile | None:
@@ -113,12 +114,15 @@ def list_applicants(position_folder_id: str, position_name: str) -> list[Applica
         r = drive.files().list(
             q=f"'{position_folder_id}' in parents and trashed=false "
               f"and mimeType='application/vnd.google-apps.folder'",
-            fields="nextPageToken, files(id,name)",
+            fields="nextPageToken, files(id,name,createdTime)",
             includeItemsFromAllDrives=True, supportsAllDrives=True,
             pageSize=200, pageToken=page_token,
         ).execute()
         for f in r.get('files', []):
-            applicants.append(Applicant(id=f['id'], name=f['name'], position=position_name))
+            applicants.append(Applicant(
+                id=f['id'], name=f['name'], position=position_name,
+                applied_at=f.get('createdTime', ''),
+            ))
         page_token = r.get('nextPageToken')
         if not page_token:
             break
@@ -142,7 +146,7 @@ def list_applicants(position_folder_id: str, position_name: str) -> list[Applica
         r = drive.files().list(
             q=f"'{position_folder_id}' in parents and trashed=false "
               f"and mimeType='application/pdf'",
-            fields="nextPageToken, files(id,name,mimeType,size)",
+            fields="nextPageToken, files(id,name,mimeType,size,createdTime)",
             includeItemsFromAllDrives=True, supportsAllDrives=True,
             pageSize=200, pageToken=page_token,
         ).execute()
@@ -155,6 +159,7 @@ def list_applicants(position_folder_id: str, position_name: str) -> list[Applica
                     id=f['id'], name=f['name'],
                     mime_type=f['mimeType'], size=int(f.get('size', 0)),
                 )],
+                applied_at=f.get('createdTime', ''),
             ))
         page_token = r.get('nextPageToken')
         if not page_token:

@@ -674,6 +674,7 @@ def load_applicants_for_position(position_name: str, _folder_id: str):
     return [
         {
             'id': a.id, 'name': a.name, 'position': a.position,
+            'applied_at': a.applied_at,
             'files': [
                 {'id': f.id, 'name': f.name, 'mime_type': f.mime_type, 'size': f.size}
                 for f in a.files
@@ -1213,36 +1214,41 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
                 st.rerun()
 
     # 헤더
-    h = st.columns([0.4, 0.6, 2, 1.5, 1.5, 4, 1])
+    h = st.columns([0.4, 0.6, 0.9, 2, 1.5, 1.5, 4, 1])
     h[0].markdown("**☑**")
     h[1].markdown("**#**")
-    h[2].markdown("**이름**")
-    h[3].markdown("**매칭도**")
-    h[4].markdown("**상태**")
-    h[5].markdown("**한줄평**")
-    h[6].markdown("**상세**")
+    h[2].markdown("**지원일**")
+    h[3].markdown("**이름**")
+    h[4].markdown("**매칭도**")
+    h[5].markdown("**상태**")
+    h[6].markdown("**한줄평**")
+    h[7].markdown("**상세**")
     st.markdown("<hr style='margin:8px 0 12px 0;border:none;border-top:1px solid #EDECF1;'>",
                 unsafe_allow_html=True)
 
     for i, r in enumerate(rows, start=1):
         aid = r['_app']['id']
-        c = st.columns([0.4, 0.6, 2, 1.5, 1.5, 4, 1])
+        c = st.columns([0.4, 0.6, 0.9, 2, 1.5, 1.5, 4, 1])
         with c[0]:
             st.checkbox("선택", key=f"row_chk_{aid}",
                         label_visibility="collapsed")
         c[1].markdown(f"<div style='padding-top:8px;color:#8B8A95;'>{i}</div>", unsafe_allow_html=True)
-        c[2].markdown(f"<div style='padding-top:8px;font-weight:600;'>{r['name']}</div>",
+        applied_at = r['_app'].get('applied_at', '')
+        applied_display = applied_at[5:10].replace('-', '/') if len(applied_at) >= 10 else '—'
+        c[2].markdown(f"<div style='padding-top:8px;color:#6B6A73;font-size:0.85rem;'>{applied_display}</div>",
+                      unsafe_allow_html=True)
+        c[3].markdown(f"<div style='padding-top:8px;font-weight:600;'>{r['name']}</div>",
                       unsafe_allow_html=True)
         if r['score'] >= 0:
-            c[3].markdown(
+            c[4].markdown(
                 f'<div style="padding-top:4px;"><span class="score-badge {score_class(r["score"])}">{r["score"]}점</span></div>',
                 unsafe_allow_html=True,
             )
         else:
-            c[3].markdown("<div style='padding-top:8px;color:#9CA3AF;'>—</div>",
+            c[4].markdown("<div style='padding-top:8px;color:#9CA3AF;'>—</div>",
                           unsafe_allow_html=True)
         color = STATUS_COLORS.get(r['status'], '#9CA3AF')
-        c[4].markdown(
+        c[5].markdown(
             f'<div style="padding-top:4px;"><span class="status-badge" style="background:{color}22;color:{color};border:1px solid {color}44;">{r["status"]}</span></div>',
             unsafe_allow_html=True,
         )
@@ -1251,9 +1257,9 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
             oneliner = '(분석 완료)'
         elif not r['_anl']:
             oneliner = '(미분석)'
-        c[5].markdown(f"<div style='padding-top:8px;color:#4B5563;font-size:0.9rem;'>{oneliner[:90]}</div>",
+        c[6].markdown(f"<div style='padding-top:8px;color:#4B5563;font-size:0.9rem;'>{oneliner[:90]}</div>",
                       unsafe_allow_html=True)
-        with c[6]:
+        with c[7]:
             if st.button("→", key=f"detail_{aid}", use_container_width=True):
                 st.session_state['selected_applicant_id'] = aid
                 st.rerun()
