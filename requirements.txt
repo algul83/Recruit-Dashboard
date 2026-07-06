@@ -8,3 +8,4 @@ pypdf>=4.3
 python-pptx>=1.0
 beautifulsoup4>=4.12
 requests>=2.30
+json-repair>=0.30

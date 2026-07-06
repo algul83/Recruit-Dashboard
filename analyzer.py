@@ -14,6 +14,28 @@ from anthropic import Anthropic
 
 MODEL = "claude-haiku-4-5"  # 비용 효율적이고 충분히 똑똑
 FALLBACK_MODEL = "claude-sonnet-4-6"  # JSON 파싱 실패 시 자동 fallback (더 강한 모델)
+MAX_RETRIES_ON_JSON_FAIL = 2  # 동일 모델로 JSON 파싱 실패 시 재시도 횟수 (stochastic 실패 대응)
+
+
+def _parse_json_with_repair(text: str) -> tuple[dict | None, str | None]:
+    """LLM 응답에서 JSON 추출 → 표준 json → 실패 시 json_repair fallback.
+
+    Returns (data_dict, error_message). data_dict가 None이면 파싱 실패.
+    """
+    m = re.search(r'\{[\s\S]*\}', text)
+    if not m:
+        return None, "JSON 블록 없음"
+    raw = m.group(0)
+    try:
+        return json.loads(raw), None
+    except json.JSONDecodeError as e:
+        # 1차 실패 → json_repair로 자동 수리 시도 (콤마 누락 · trailing 콤마 등 흔한 LLM 오류)
+        try:
+            from json_repair import repair_json
+            repaired = repair_json(raw, return_objects=False)
+            return json.loads(repaired), None
+        except Exception as repair_err:
+            return None, f"{e} (repair 실패: {type(repair_err).__name__})"
 
 
 def _client() -> Anthropic:
@@ -257,9 +279,10 @@ def analyze_applicant(
     content_blocks.append({"type": "text", "text": user_text})
 
     # vision 자료 있으면 처음부터 sonnet (vision 더 강함). 없으면 haiku → sonnet fallback.
+    # max_tokens: 경력 많은 지원자(12년+)는 4000토큰 부족해 응답 잘림 → 8000으로 통일.
     has_vision = bool(vision_items)
     primary_model = FALLBACK_MODEL if has_vision else MODEL
-    primary_max = 4000 if has_vision else 2500
+    primary_max = 8000
 
     def _try(model: str, max_tokens: int, blocks: list[dict]):
         msg = client.messages.create(
@@ -268,13 +291,8 @@ def analyze_applicant(
             messages=[{"role": "user", "content": blocks}],
         )
         text = msg.content[0].text.strip()
-        m = re.search(r'\{[\s\S]*\}', text)
-        if not m:
-            return None, text, msg, "JSON 블록 없음"
-        try:
-            return json.loads(m.group(0)), text, msg, None
-        except json.JSONDecodeError as e:
-            return None, text, msg, f"{e}"
+        data, err = _parse_json_with_repair(text)
+        return data, text, msg, err
 
     # 413 RequestTooLargeError 대응: vision 자료를 큰 것부터 하나씩 떨궈가며 재시도
     from anthropic import APIStatusError
@@ -306,15 +324,26 @@ def analyze_applicant(
 
     try:
         result_tuple = _try_with_413_retry(primary_model, primary_max, content_blocks)
-        data, raw_text, msg, err, vision_dropped = result_tuple
+        data, raw_text, msg, err = result_tuple[:4]
+        vision_dropped = result_tuple[4] if len(result_tuple) > 4 else 0
     except APIStatusError as e:
         return {"error": f"API 오류: {e}", "raw": str(e)}
     used_model = primary_model
 
+    # JSON 파싱 실패 시 동일 모델로 재시도 (stochastic 실패 대응, vision 있어도 재시도)
+    for attempt in range(MAX_RETRIES_ON_JSON_FAIL):
+        if data is not None:
+            break
+        try:
+            data, raw_text, msg, err = _try(primary_model, primary_max, content_blocks)
+        except Exception as e:
+            err = f"재시도 {attempt+1} 실패: {e}"
+            break
+
     # haiku 실패 시 sonnet fallback (vision 없는 경우)
     if data is None and not has_vision:
         try:
-            data, raw_text, msg, err = _try(FALLBACK_MODEL, 4000, content_blocks)
+            data, raw_text, msg, err = _try(FALLBACK_MODEL, 8000, content_blocks)
             used_model = FALLBACK_MODEL if data else used_model
         except Exception as e:
             err = f"sonnet 재시도도 실패: {e}"
