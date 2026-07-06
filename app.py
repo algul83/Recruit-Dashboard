@@ -1110,7 +1110,7 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
     with sort_col:
         sort_by = st.selectbox(
             "정렬",
-            ["매칭도 ↓", "매칭도 ↑", "이름", "상태"],
+            ["매칭도 ↓", "매칭도 ↑", "지원일 ↓", "지원일 ↑", "이름", "상태"],
             key="sort_by",
         )
     with filter_col:
@@ -1143,6 +1143,10 @@ def page_dashboard(applicants: list[dict], analyses: dict, statuses: dict, jd_te
         rows.sort(key=lambda r: r['score'], reverse=True)
     elif sort_by == "매칭도 ↑":
         rows.sort(key=lambda r: r['score'] if r['score'] >= 0 else 999)
+    elif sort_by == "지원일 ↓":
+        rows.sort(key=lambda r: r['_app'].get('applied_at') or '', reverse=True)
+    elif sort_by == "지원일 ↑":
+        rows.sort(key=lambda r: r['_app'].get('applied_at') or '9999')
     elif sort_by == "이름":
         rows.sort(key=lambda r: r['name'])
     else:
