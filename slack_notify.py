@@ -105,6 +105,7 @@ HIGH_MATCH_THRESHOLD = 70  # 기본 임계값
 # 포지션별 임계값 override (기본 70점)
 HIGH_MATCH_THRESHOLDS = {
     "AI연구원": 75,  # 인재상 적용 후 점수가 전반적으로 높아 상향
+    "iOS 개발자": 80,
 }
 
 # 포지션별로 멘션 받을 사람 (서류 검토 단계 담당자)
