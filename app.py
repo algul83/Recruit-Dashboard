@@ -969,7 +969,7 @@ def page_home(positions_map: dict, all_applicants: dict,
             "color": "#059669", "color_light": "#A7F3D0", "color_bg": "#ECFDF5",
             "notion": "https://www.notion.so/3873a7334743818a9651c51e13a15f6e",
         },
-        "사업기획 PM": {
+        "프로젝트 관리자(PM)": {
             "icon": "📋", "team": "R&D센터", "reviewer": "Erin",
             "color": "#D97706", "color_light": "#FDE68A", "color_bg": "#FFFBEB",
             "notion": "https://www.notion.so/3c73a73347438149a7c6c3008f0b6fa1",
@@ -1832,7 +1832,7 @@ NOTION_JD_URLS = {
     "웹디자이너": "https://www.notion.so/9e32e8cc780045099990c0fd27f39b2b",
     "iOS 개발자": "https://onesglobal.notion.site/58160581c1ed43b7b50abdc86838c683",
     "약사": "https://www.notion.so/3873a7334743818a9651c51e13a15f6e",
-    "사업기획 PM": "https://www.notion.so/3c73a73347438149a7c6c3008f0b6fa1",
+    "프로젝트 관리자(PM)": "https://www.notion.so/3c73a73347438149a7c6c3008f0b6fa1",
 }
 
 

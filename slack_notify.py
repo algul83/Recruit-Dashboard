@@ -116,7 +116,7 @@ HIGH_MATCH_REVIEWERS = {
     "웹디자이너": ["Lina"],
     "iOS 개발자": ["Furi"],
     "약사": ["Y"],
-    "사업기획 PM": ["Erin"],
+    "프로젝트 관리자(PM)": ["Erin"],
 }
 
 
