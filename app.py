@@ -664,6 +664,9 @@ def render_top_header():
 # ============== 데이터 로딩 ==============
 @st.cache_data(ttl=600, show_spinner="Drive 폴더 탐색 중...")
 def load_positions():
+    # data_loader 쪽 lru_cache는 프로세스가 살아있는 한 만료되지 않아,
+    # 새로 만든 포지션 폴더가 TTL이 지나도 계속 안 보인다. 여기서 먼저 비움.
+    data_loader.list_position_folders.cache_clear()
     return data_loader.list_position_folders(get_shared_drive_id())
 
 
@@ -968,6 +971,11 @@ def page_home(positions_map: dict, all_applicants: dict,
             "icon": "💊", "team": "Data팀", "reviewer": "Y",
             "color": "#059669", "color_light": "#A7F3D0", "color_bg": "#ECFDF5",
             "notion": "https://www.notion.so/3873a7334743818a9651c51e13a15f6e",
+        },
+        "프로젝트 관리자(PM)": {
+            "icon": "📋", "team": "R&D센터", "reviewer": "Erin",
+            "color": "#D97706", "color_light": "#FDE68A", "color_bg": "#FFFBEB",
+            "notion": "https://www.notion.so/3c73a73347438149a7c6c3008f0b6fa1",
         },
     }
     DEFAULT_THEME = {
@@ -1827,6 +1835,7 @@ NOTION_JD_URLS = {
     "웹디자이너": "https://www.notion.so/9e32e8cc780045099990c0fd27f39b2b",
     "iOS 개발자": "https://onesglobal.notion.site/58160581c1ed43b7b50abdc86838c683",
     "약사": "https://www.notion.so/3873a7334743818a9651c51e13a15f6e",
+    "프로젝트 관리자(PM)": "https://www.notion.so/3c73a73347438149a7c6c3008f0b6fa1",
 }
 
 
