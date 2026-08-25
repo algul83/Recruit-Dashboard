@@ -664,6 +664,9 @@ def render_top_header():
 # ============== 데이터 로딩 ==============
 @st.cache_data(ttl=600, show_spinner="Drive 폴더 탐색 중...")
 def load_positions():
+    # data_loader 쪽 lru_cache는 프로세스가 살아있는 한 만료되지 않아,
+    # 새로 만든 포지션 폴더가 TTL이 지나도 계속 안 보인다. 여기서 먼저 비움.
+    data_loader.list_position_folders.cache_clear()
     return data_loader.list_position_folders(get_shared_drive_id())
 
 
