@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 from datetime import datetime
 
 import pandas as pd
@@ -895,55 +894,6 @@ def analyze_one(applicant_dict: dict, jd_text: str, ideal_profile: str = "",
 
 
 # ============== UI 페이지 ==============
-def render_drive_diagnostics():
-    """포지션 폴더가 목록에 안 잡힐 때 원인을 보는 임시 진단 패널.
-
-    서비스 계정이 실제로 보는 공유드라이브 루트 목록과, 특정 폴더가 어느
-    드라이브의 어느 부모 아래 있는지를 그대로 보여준다. 원인 확인 후 제거 가능.
-    """
-    with st.expander("🔧 드라이브 진단", expanded=False):
-        drive_id = get_shared_drive_id()
-        st.caption(f"공유드라이브 ID: `{drive_id}`")
-        st.caption(f"서비스 계정: `{data_loader.service_account_email() or '-'}`")
-        target = st.text_input(
-            "폴더 URL 또는 ID (선택)",
-            key='diag_folder',
-            placeholder="https://drive.google.com/drive/folders/...",
-        )
-        if not st.button("진단 실행", key='diag_run', use_container_width=True):
-            return
-
-        m = re.search(r'/folders/([A-Za-z0-9_-]+)', target or '')
-        folder_id = m.group(1) if m else (target or '').strip()
-        try:
-            snap = data_loader.debug_drive_snapshot(drive_id, folder_id)
-        except Exception as e:
-            st.error(f"조회 실패: {e}")
-            return
-
-        st.markdown("**루트 항목 (`_` 필터 적용 전)**")
-        lines = [
-            f"{'📁' if it['mimeType'].endswith('.folder') else '📄'} {it['name']!r}"
-            for it in snap['root_items']
-        ]
-        st.code("\n".join(lines) or "(비어 있음)")
-
-        if 'folder_error' in snap:
-            st.error(f"폴더 조회 실패 — 서비스 계정이 접근할 수 없음: {snap['folder_error']}")
-        elif 'folder' in snap:
-            f = snap['folder']
-            st.markdown("**폴더 조회 결과**")
-            st.json(f)
-            in_drive = f.get('driveId') == drive_id
-            at_root = drive_id in (f.get('parents') or [])
-            if not in_drive:
-                st.error("이 폴더는 대시보드가 보는 공유드라이브에 있지 않습니다.")
-            elif not at_root:
-                st.error("공유드라이브 안에 있지만 최상위가 아닙니다 — 루트로 옮겨야 합니다.")
-            else:
-                st.success("위치는 정상입니다 (공유드라이브 최상위).")
-
-
 def page_home(positions_map: dict, all_applicants: dict,
               all_analyses: dict, all_statuses: dict):
     """전체 채용 현황 홈 — 포지션·지원자·매칭·상태 종합 개요."""
@@ -2124,8 +2074,6 @@ def main():
             load_cached_statuses.clear()
             load_cached_profiles.clear()
             st.rerun()
-
-        render_drive_diagnostics()
 
     # 데이터 로드
     folder_id = positions_map[position]

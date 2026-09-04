@@ -79,44 +79,6 @@ class Applicant:
         return [f for f in self.files if f.name.endswith('.html')]
 
 
-def service_account_email() -> str:
-    """진단용 — 앱이 쓰는 서비스 계정 이메일."""
-    try:
-        import streamlit as st
-        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
-            return st.secrets['gcp_service_account'].get('client_email', '')
-    except Exception:
-        pass
-    return ""
-
-
-def debug_drive_snapshot(shared_drive_id: str, folder_id: str = "") -> dict:
-    """진단용 — 서비스 계정이 실제로 보는 것을 캐시 없이 그대로 반환.
-
-    - root_items: 공유드라이브 최상위 항목 전체 (`_` 필터 적용 전)
-    - folder: folder_id를 주면 그 폴더의 이름/부모/소속 드라이브
-    """
-    drive = _drive_client()
-    root = drive.files().list(
-        q=f"'{shared_drive_id}' in parents and trashed=false",
-        fields="files(id,name,mimeType)",
-        corpora='drive', driveId=shared_drive_id,
-        includeItemsFromAllDrives=True, supportsAllDrives=True,
-        pageSize=100,
-    ).execute().get('files', [])
-    out: dict = {'root_items': root}
-    if folder_id:
-        try:
-            out['folder'] = drive.files().get(
-                fileId=folder_id,
-                fields="id,name,mimeType,parents,driveId,trashed",
-                supportsAllDrives=True,
-            ).execute()
-        except Exception as e:
-            out['folder_error'] = str(e)
-    return out
-
-
 @lru_cache(maxsize=1)
 def list_position_folders(shared_drive_id: str) -> dict[str, str]:
     """공유드라이브 root에서 포지션 폴더 목록 (`_` 로 시작하는 시스템 폴더 제외)."""
